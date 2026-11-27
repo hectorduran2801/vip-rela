@@ -1,0 +1,97 @@
+<div class="page wa-page">
+  @if (!state.loaded()) { <app-loading variant="block" label="Consultando WhatsApp…" /> }
+  @else {
+    <section class="panel wa-card" aria-labelledby="wa-title">
+      <div class="wa-head">
+        <h2 id="wa-title">WhatsApp</h2>
+        <span class="badge wa-badge" [class.paid]="badgeTone() === 'ok'" [class.credit]="badgeTone() === 'test'" [class.attn]="badgeTone() === 'warn'" [class.pending]="badgeTone() === 'danger'" role="status">{{ v().label }}</span>
+      </div>
+
+      @if (loggedOutNotice() && !logoutBusy()) {
+        <p class="wa-line warn" id="wa-logout-note" role="status"><span><strong>Sesión cerrada en VIP.</strong> Se eliminaron las credenciales guardadas y la próxima conexión pedirá un código QR nuevo. VIP no puede confirmar que el dispositivo se haya desvinculado de tu cuenta: si sigue apareciendo, elimínalo desde el teléfono en <strong>WhatsApp → Dispositivos vinculados</strong>.</span></p>
+      }
+      @if (unavailable()) {
+        <p class="wa-line warn" id="wa-worker" role="status"><span><strong>WhatsApp no disponible.</strong> {{ v().detail }}@if (state.error(); as e) { <app-err [text]="e" /> }</span>
+          <button type="button" class="btn sm" [disabled]="state.requesting()" (click)="retry()" [appBusy]="state.requesting()" busyLabel="Reintentando…">Reintentar</button>
+          @if (v().technical; as t) { <details class="tech"><summary>Detalle técnico</summary><code>{{ t }}</code></details> }</p>
+      } @else if (actionError(); as e) {
+        <p class="wa-line bad" role="alert"><span><app-err [text]="e" /></span><button type="button" class="btn sm" (click)="retry()">Reintentar</button></p>
+      } @else if (status() === 'failed' && known()) {
+        <p class="wa-line bad" role="alert"><span><strong>Error del worker:</strong> {{ session()?.lastError ?? 'el servicio no informó el motivo.' }}</span></p>
+      }
+
+      <div class="wa-body">
+        <dl class="wa-facts">
+          <div><dt>Número vinculado</dt><dd>{{ phone() }}</dd></div>
+          <div><dt>Última conexión</dt><dd>{{ lastConn() }}</dd></div>
+          <div><dt>Sesión persistente</dt><dd><span class="badge" [class.paid]="persisted().ok">{{ persisted().label }}</span></dd></div>
+          <div><dt>Modo de envío</dt><dd><span class="badge" [class.paid]="sendMode().tone === 'ok'" [class.credit]="sendMode().tone === 'test'">{{ sendMode().label }}</span></dd></div>
+          <div><dt>Reconexión automática</dt><dd>{{ reconnection() }}</dd></div>
+        </dl>
+        @if (showQr()) {
+          <div class="wa-qr">
+            @if (image(); as img) {
+              <img [src]="img" alt="Código QR para vincular WhatsApp" width="180" height="180" />
+              <div>
+                <p class="wa-steps">En el teléfono: <strong>WhatsApp → Dispositivos vinculados → Vincular dispositivo</strong> y escanea el código.</p>
+                @if (qrLeft() !== null) { <p class="muted wa-count" aria-live="off">@if (qrLeft()! > 0) { Vence en {{ qrLeft() }} s y se renueva solo. } @else { Venció; se está renovando… }</p> }
+              </div>
+            } @else { <p class="muted">Generando el código QR…</p> }
+          </div>
+        }
+      </div>
+      @if (!(perms.isSuper() && gate().message)) { <p class="muted wa-real-note">WhatsApp puede estar conectado y aun así los envíos reales estar desactivados: conectar la cuenta no autoriza enviar mensajes.</p> }
+
+      @if (connectInProgress()) {
+        <div class="wa-steps-card" role="status" aria-live="polite" aria-label="Progreso de la conexión">
+          <ol class="wa-progress">@for (st of steps(); track st.label) { <li [class.done]="st.done" [class.active]="st.active"><span class="dot" aria-hidden="true">@if (st.done) { ✓ }</span>{{ st.label }}</li> }
+            <li [class.done]="false"><span class="dot" aria-hidden="true"></span>Conectado</li></ol>
+          @if (state.pendingSlow()) { <p class="wa-line warn" role="status"><span><strong>Está tardando más de lo normal.</strong> Puedes esperar un poco más o volver a intentarlo.</span></p> }
+        </div>
+      }
+      @if (perms.canOperate()) {
+        <div class="wa-actions-wrap">
+          <div class="wa-actions">
+            @switch (status()) {
+              @case ('connected') {
+                <button type="button" class="btn" [disabled]="workBusy()" (click)="confirm.set('disconnect')" [appBusy]="disconnectBusy()" busyLabel="Desconectando…">Desconectar</button>
+              }
+              @case ('failed') { <button type="button" class="btn primary" [disabled]="workBusy()" (click)="connect()" [appBusy]="connectBusy()" busyLabel="Reintentando…">Reintentar</button> }
+              @case ('disconnected') {
+                @if (state.pendingSlow()) { <button type="button" class="btn primary" (click)="connect()">Reintentar</button> }
+                @else { <button type="button" class="btn primary" [disabled]="workBusy()" (click)="connect()" [appBusy]="connectBusy()" busyLabel="Conectando…">Conectar WhatsApp</button> }
+              }
+              @default { <button type="button" class="btn" [disabled]="workBusy()" (click)="disconnect()" [appBusy]="disconnectBusy()" busyLabel="Cancelando…">Cancelar</button> }
+            }
+            @if (canLogout() || logoutBusy()) {
+              <button type="button" class="btn danger" [disabled]="workBusy() || logoutBusy()" (click)="confirm.set('logout')" [appBusy]="logoutBusy()" busyLabel="Cerrando sesión…">Cerrar sesión</button>
+            }
+            @if (perms.isSuper()) {
+              @if (gate().operational) { <a class="btn" routerLink="/messages/whatsapp/test">Enviar mensaje de prueba</a> }
+              @else { <button type="button" class="btn" disabled aria-describedby="wa-test-hint">Enviar mensaje de prueba</button> }
+            }
+          </div>
+          @if (perms.isSuper() && gate().message; as msg) {
+            <p class="wa-gate" id="wa-test-hint" role="status"><app-icon name="info" /><span>{{ msg }}</span></p>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  @if (confirm() === 'disconnect') {
+    <app-modal #dm [alert]="true" size="sm" title="Desconectar WhatsApp" (closed)="confirm.set(null)">
+      <p><strong>¿Desconectar WhatsApp temporalmente?</strong> Se detiene la conexión y el procesamiento de envíos. La sesión se conserva: podrás volver a conectar sin escanear el código QR.</p>
+      <div modalFooter class="form-actions"><button type="button" class="btn" (click)="dm.requestClose()">Cancelar</button>
+        <button type="button" class="btn danger" (click)="disconnect()">Desconectar</button></div>
+    </app-modal>
+  }
+  @if (confirm() === 'logout') {
+    <app-modal #lm [alert]="true" size="sm" title="Cerrar sesión de WhatsApp" (closed)="confirm.set(null)">
+      <p><strong>¿Cerrar la sesión de WhatsApp?</strong> Se eliminan las credenciales guardadas y la próxima conexión pedirá escanear un código QR nuevo. Conductores, unidades, plantillas, pagos y saldos no se modifican.</p>
+      <p class="muted">VIP no puede garantizar que el dispositivo se desvincule de tu cuenta de WhatsApp. Puede ser necesario eliminarlo desde el teléfono, en <strong>WhatsApp → Dispositivos vinculados</strong>.</p>
+      <div modalFooter class="form-actions"><button type="button" class="btn" (click)="lm.requestClose()">Cancelar</button>
+        <button type="button" class="btn danger" (click)="logout()">Cerrar sesión</button></div>
+    </app-modal>
+  }
+</div>

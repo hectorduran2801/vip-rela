@@ -1,0 +1,20 @@
+# Nunca dentro de una imagen: secretos, sesiones de WhatsApp y datos reales.
+**/.env
+**/.env.*
+**/.npmrc
+**/.openwa-sessions
+**/.wwebjs_auth
+backups-dev
+.logs
+**/*.xlsx
+**/*.sql.gz
+
+**/node_modules
+**/dist
+**/.angular
+**/*.log
+**/.DS_Store
+.git
+docs
+supabase/*
+!supabase/schema-manifest.json

@@ -1,0 +1,107 @@
+<div class="page">
+  <div class="toolbar">
+    <p class="muted">Cada horario envía una plantilla a una audiencia a la hora indicada. Los mensajes se crean igual que en Cobranza: sin duplicados el mismo día y con los datos del Excel.</p>
+    @if (perms.canOperate()) { <button type="button" class="btn primary" (click)="add()">Nuevo horario</button> }
+  </div>
+
+  @if (notRunning()) {
+    <div class="alert warn" role="status"><strong>Los envíos automáticos están desactivados en el servidor.</strong> Los horarios se guardan, pero no se ejecutarán hasta que se activen.</div>
+  }
+  @if (msg(); as m) { <div class="alert ok" role="status">{{ m }}</div> }
+  @if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }
+
+  @if (list.error(); as e) { <app-error-state [message]="e" (retry)="list.reload()" /> }
+  @if (list.loading() && !list.data().length) { <app-loading variant="table" /> }
+  @else if (!list.error() && !list.data().length) { <app-empty-state icon="clock" title="Aún no hay horarios" hint="Crea una plantilla y asígnala a un horario, por ejemplo «todas las noches a las 10:00 PM a todos los conductores»." /> }
+  @else {
+    <ul class="cards tpl-grid" aria-label="Horarios de envío">
+      @for (s of list.data(); track s.id) {
+        <li class="card">
+          <div class="row"><strong>{{ s.name }}</strong>
+            <span class="chip-s" [class.paid]="s.enabled" [class.credit]="!s.enabled">{{ s.enabled ? 'Activo' : 'Desactivado' }}</span></div>
+          <dl class="kv">
+            <dt>Hora</dt><dd>{{ time(s.localTime) }} · {{ daysTxt(s.weekdays) }}</dd>
+            <dt>Plantilla</dt><dd>@if (s.templateName) { {{ s.templateName }} } @else { <span class="muted">Sin plantilla</span> }</dd>
+            <dt>Audiencia</dt><dd>{{ audienceLabel(s.audience) }}@if (s.audience === 'selected') { ({{ s.assignmentIds?.length ?? 0 }}) }</dd>
+            <dt>Último envío</dt><dd>{{ lastRun(s) }}</dd>
+          </dl>
+          @if (perms.canOperate()) {
+            <div class="actions">
+              <button type="button" class="btn" [disabled]="saving()" (click)="toggle(s)">{{ s.enabled ? 'Desactivar' : 'Activar' }}</button>
+              <app-icon-button icon="pencil" label="Editar horario" [labelOnMobile]="true" (click)="edit(s)" />
+              <app-icon-button icon="trash" label="Eliminar horario" tone="danger" [labelOnMobile]="true" (click)="confirmDelete.set(s)" />
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  @if (confirmDelete(); as c) {
+    <app-modal #dm [alert]="true" size="sm" title="Eliminar horario" [busy]="deleting()" (closed)="confirmDelete.set(null)">
+      <p><strong>¿Eliminar el horario «{{ c.name }}»?</strong> Dejará de enviar. Los mensajes ya creados no se modifican.</p>
+      <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="deleting()" (click)="dm.requestClose()">Cancelar</button>
+        <button type="button" class="btn danger" (click)="remove()" [appBusy]="deleting()" busyLabel="Eliminando…">Eliminar horario</button></div>
+    </app-modal>
+  }
+
+  @if (form(); as f) {
+    <form (ngSubmit)="save()" novalidate [class.behind]="!!picking()">
+      <app-modal #m [title]="f.id ? 'Editar horario' : 'Nuevo horario'" size="md" [busy]="saving()" [trackDirty]="false" [dirty]="formDirty()" (closed)="form.set(null)">
+        <div class="field"><label for="sf-name">Nombre *</label>
+          <input id="sf-name" name="name" autocomplete="off" maxlength="80" [ngModel]="f.name" (ngModelChange)="patch('name', $event)" />
+          @if (submitted() && !f.name.trim()) { <small class="pending" role="alert">Escribe un nombre.</small> }</div>
+        <fieldset class="field time-picks"><legend>Hora (Panamá) *</legend>
+          <div class="time-row">
+            <div class="field"><label for="sf-h">Hora</label><select id="sf-h" name="hour" [ngModel]="f.hour" (ngModelChange)="patch('hour', +$event)">@for (h of hours; track h) { <option [ngValue]="h">{{ pad(h) }}</option> }</select></div>
+            <div class="field"><label for="sf-min">Minutos</label><select id="sf-min" name="minute" [ngModel]="f.minute" (ngModelChange)="patch('minute', +$event)">@for (m of minutes; track m) { <option [ngValue]="m">{{ pad(m) }}</option> }</select></div>
+            <div class="field"><label for="sf-ap">Período</label><select id="sf-ap" name="period" [ngModel]="f.period" (ngModelChange)="patch('period', $event)"><option value="AM">AM</option><option value="PM">PM</option></select></div>
+          </div>
+          <small class="muted" aria-live="polite">Hora seleccionada: <strong>{{ chosenTime() }}</strong> · Panamá</small></fieldset>
+        <fieldset class="field"><legend>Días *</legend>
+          <div class="day-picks">@for (d of days; track d; let i = $index) {
+            <label class="check"><input type="checkbox" [name]="'d' + i" [ngModel]="f.weekdays.includes(i + 1)" (ngModelChange)="toggleDay(i + 1)" /> {{ d }}</label> }</div>
+          @if (submitted() && !f.weekdays.length) { <small class="pending" role="alert">Elige al menos un día.</small> }</fieldset>
+        <div class="field"><label for="sf-tpl">Plantilla @if (f.enabled) { * }</label>
+          <select id="sf-tpl" name="tpl" [ngModel]="f.templateId" (ngModelChange)="patch('templateId', $event)">
+            <option value="">Sin plantilla</option>
+            @for (t of templates.data(); track t.id) { <option [value]="t.id">{{ t.name }}</option> }
+          </select>
+          @if (submitted() && f.enabled && !f.templateId) { <small class="pending" role="alert">Un horario activo necesita una plantilla.</small> }
+          @if (!templates.data().length && !templates.loading()) { <small class="muted">Aún no hay plantillas: <a routerLink="/messages/templates">crea una</a>.</small> }</div>
+        <div class="field"><label for="sf-aud">Enviar a</label>
+          <select id="sf-aud" name="aud" [ngModel]="f.audience" (ngModelChange)="patch('audience', $event)">
+            @for (a of audiences; track a.value) { <option [value]="a.value">{{ a.label }}</option> }
+          </select>
+          <small class="muted">{{ audienceHint(f.audience) }}
+            @if (count() !== null) { Hoy llegaría a <strong>{{ count() }}</strong> {{ count() === 1 ? 'conductor' : 'conductores' }}. }</small>
+          @if (f.audience === 'selected') {
+            <div class="pk-chosen"><button type="button" class="btn sm" (click)="openPicker()">{{ f.selected.length ? 'Editar conductores' : 'Seleccionar conductores' }}</button><strong>{{ f.selected.length }} {{ f.selected.length === 1 ? 'conductor elegido' : 'conductores elegidos' }}</strong></div>
+            @if (submitted() && f.enabled && !f.selected.length) { <small class="pending" role="alert">Elige al menos un conductor.</small> }
+          }</div>
+        <label class="check"><input type="checkbox" name="enabled" [ngModel]="f.enabled" (ngModelChange)="patch('enabled', $event)" /> Activo (se ejecuta a la hora indicada)</label>
+        <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="saving()" (click)="m.requestClose()">Cancelar</button>
+          <button type="submit" class="btn primary" [appBusy]="saving()" busyLabel="Guardando…">Guardar horario</button></div>
+      </app-modal>
+    </form>
+  }
+
+  @if (picking(); as sel) {
+    <app-modal #pm class="pk-modal" title="Seleccionar conductores" size="lg" [trackDirty]="false" (closed)="picking.set(null)">
+      <div class="field"><label for="pk-q" class="sr-only">Buscar conductor</label><input id="pk-q" type="search" name="pkq" autocomplete="off" placeholder="Buscar por nombre, unidad u operario…" [ngModel]="pickQuery()" (ngModelChange)="pickQuery.set($event)" /></div>
+      <div class="row pk-bar"><button type="button" class="btn sm" (click)="pickAll(true)">Marcar todos</button><button type="button" class="btn sm" (click)="pickAll(false)">Quitar todos</button><span class="grow"></span><strong aria-live="polite">{{ sel.size }} {{ sel.size === 1 ? 'seleccionado' : 'seleccionados' }}</strong></div>
+      @if (drivers.error(); as e) { <app-error-state [message]="e" (retry)="drivers.reload()" /> }
+      @else if (drivers.loading() && !drivers.data().length) { <app-loading variant="list" [rows]="8" label="Cargando conductores…" /> }
+      @else if (!pickList().length) { <p class="muted">Ningún conductor con WhatsApp coincide.</p> }
+      @else {
+        <ul class="pk-list">
+          @for (r of pickList(); track r.assignmentId) {
+            <li><label><input type="checkbox" [checked]="sel.has(r.assignmentId)" (change)="pick(r.assignmentId, $any($event.target).checked)" /> <strong>{{ r.unitCode }}</strong> <span>{{ r.fullName }}</span>
+              <span class="muted pk-due">Saldo {{ usd(r.saldoCents ?? 0) }}</span></label></li>
+          }
+        </ul>
+      }
+      <div modalFooter class="form-actions"><button type="button" class="btn" (click)="picking.set(null)">Cancelar</button><button type="button" class="btn primary" (click)="confirmPick()">Usar {{ sel.size }} {{ sel.size === 1 ? 'conductor' : 'conductores' }}</button></div>
+    </app-modal>
+  }
+</div>

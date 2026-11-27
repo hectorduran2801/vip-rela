@@ -1,0 +1,123 @@
+<div class="page">
+  @if (load.error(); as e) { <app-error-state [message]="e" (retry)="load.reload()" /> }
+  @else if (load.loading() && !unit()) { <app-loading variant="stats" label="Cargando la unidad…" /> }
+  @else if (!unit()) { <app-empty-state title="Unidad no encontrada" /> }
+  @else if (unit(); as u) {
+    <div aria-live="polite">
+      @if (ok(); as m) { <div class="alert ok">{{ m }}</div> }
+      @if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }
+    </div>
+    @if (editing()) { <app-modal #em title="Editar unidad" size="lg" (closed)="editing.set(false)"><app-unit-form [unit]="u" (saved)="saved()" (cancelled)="em.requestClose()" /></app-modal> }
+    @else {
+      <section class="panel" aria-labelledby="ud-title">
+        <div class="row">
+          <h2 id="ud-title">Unidad {{ u.code }}</h2>
+          <span class="badge" [class.paid]="u.vehicleStatus === 'active'" [class.pending]="u.vehicleStatus !== 'active'">{{ labels[u.vehicleStatus] }}</span>
+        </div>
+        <dl class="kv"><dt>Placa</dt><dd>{{ u.plate ?? 'Sin registrar' }}</dd><dt>Vehículo</dt><dd>{{ u.make ?? '—' }} {{ u.model ?? '' }} {{ u.year ?? '' }}</dd>
+          @if (u.notes) { <dt>Notas</dt><dd>{{ u.notes }}</dd> }</dl>
+        @if (perms.canOperate()) {
+        <div class="actions">
+          <span class="icon-actions" role="group" aria-label="Acciones de la unidad">
+            <app-icon-button icon="pencil" label="Editar unidad" [labelOnMobile]="true" (click)="editing.set(true)" />
+            <app-manage-entity kind="units" [entityId]="u.id" [name]="u.code" [archived]="u.vehicleStatus === 'out_of_service'" [labelOnMobile]="true" (changed)="saved()" (deleted)="goBack('/vehicles')" />
+            <app-icon-button [icon]="u.vehicleStatus === 'active' ? 'pausecircle' : 'playcircle'" [label]="u.vehicleStatus === 'active' ? 'Suspender unidad (mantenimiento)' : 'Reactivar unidad'" [labelOnMobile]="true" [busy]="busy()"
+              (click)="setVehicleStatus(u.vehicleStatus === 'active' ? 'maintenance' : 'active')" />
+            @if (u.vehicleStatus === 'active') { <app-icon-button icon="ban" label="Desactivar unidad (fuera de servicio)" tone="danger" [labelOnMobile]="true" [busy]="busy()" (click)="confirmOut.set(true)" /> }
+          </span>
+        </div>
+        @if (confirmOut()) {
+          <app-modal #om [alert]="true" size="sm" [busy]="busy()" title="Desactivar unidad" (closed)="confirmOut.set(false)">
+            <p><strong>¿Desactivar la unidad {{ u.code }} (fuera de servicio)?</strong> No debería recibir nuevas asignaciones hasta que la reactives.</p>
+            <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="busy()" (click)="om.requestClose()">Cancelar</button>
+              <button type="button" class="btn danger" [disabled]="busy()" (click)="outOfService()" [appBusy]="busy()" busyLabel="Desactivando…">Desactivar unidad</button></div>
+          </app-modal>
+        }
+        }
+        @if (u.vehicleStatus !== 'active') { <p class="muted">Una unidad suspendida o fuera de servicio no debería recibir nuevas asignaciones.</p> }
+      </section>
+    }
+
+    <section class="panel" aria-labelledby="ud-cond">
+      <h2 id="ud-cond">Acuerdo / condición especial</h2>
+      <p class="muted">Texto libre. Es independiente del estado operativo y <strong>no cambia tarifas, cuotas, pagos, saldos ni asignaciones</strong>.</p>
+      <app-unit-agreement [unit]="u" [editable]="perms.canOperate()" (saved)="agreementSaved()" />
+      <h3>Historial</h3>
+      @if (!load.data().history.length) { <p class="muted">Sin cambios registrados.</p> }
+      @else {
+        <ul class="plain" aria-label="Historial del acuerdo">@for (h of load.data().history; track h.id) {
+          <li>{{ show(h.previousAgreement) }} → <strong>{{ show(h.agreement) }}</strong>@if (h.note) { · {{ h.note }} }
+            <span class="muted"> · {{ h.source === 'import' ? 'importación' : 'manual' }} · {{ h.changedByName ?? 'sistema' }} · {{ when(h.changedAt) }}</span></li>
+        }</ul>
+      }
+    </section>
+
+    <section class="panel" aria-labelledby="ud-cur">
+      <h2 id="ud-cur">Conductor y tarifa vigentes</h2>
+      @if (current(); as a) {
+        <p><a [routerLink]="['/drivers', a.driverId]">{{ a.driverName }}</a> · operador {{ a.operatorCode }} · desde {{ dmy(a.validFrom) }}</p>
+        @if (a.dailyRateCents !== null) {
+          <dl class="kv"><dt>Tarifa diaria</dt><dd>{{ usd(a.dailyRateCents) }}</dd>
+            <dt>Tarifa semanal prevista</dt><dd class="muted">Se calcula por períodos de tarifa en Cobranza</dd></dl>
+        } @else { <p class="muted">Sin tarifa registrada.</p> }
+        @if (a.agreementNote) { <p class="muted">Acuerdo: {{ a.agreementNote }}</p> }
+        @if (perms.canOperate()) {
+        <div class="actions">
+          <span class="icon-actions" role="group" aria-label="Acciones de la asignación">
+            <app-icon-button icon="user" label="Cambiar conductor" [labelOnMobile]="true" (click)="panel.set('reassign')" />
+            <app-icon-button icon="card" label="Cambiar tarifa" [labelOnMobile]="true" (click)="panel.set('rate')" />
+            <app-icon-button icon="user-minus" label="Desvincular conductor" tone="warn" [labelOnMobile]="true" (click)="panel.set('end')" /></span>
+        </div>
+        }
+      } @else {
+        <dl class="kv"><dt>Estado</dt><dd><span class="chip-s paid">Disponible</span></dd><dt>Conductor</dt><dd>Sin asignar</dd></dl>
+        @if (perms.canOperate()) { <div class="actions"><button type="button" class="btn primary" (click)="panel.set('reassign')">Asignar conductor</button></div> }
+      }
+    </section>
+
+    @if (panel() === 'reassign') {
+      <app-modal #rm [title]="current() ? 'Cambiar conductor' : 'Asignar conductor'" size="md" (closed)="panel.set('none')"><app-reassign-form [unit]="u" [current]="current()" [lastEnd]="lastEnd()" [drivers]="load.data().drivers" (done)="finished($event)" (cancelled)="rm.requestClose()" /></app-modal>
+    }
+    @if (current(); as c) { <app-rate-history [assignmentId]="c.id" [reloadKey]="load.data().assignments" /> }
+    @if (panel() === 'rate' && current(); as a) {
+      <app-modal #tm title="Cambiar tarifa" size="md" (closed)="panel.set('none')"><app-rate-change [assignment]="a" (done)="finished($event)" (cancelled)="tm.requestClose()" /></app-modal>
+    }
+    @if (panel() === 'end' && current(); as a) {
+      <app-modal #xm [alert]="true" size="sm" title="Desvincular conductor" [busy]="busy()" (closed)="panel.set('none')">
+        <p><strong>¿Deseas desvincular a este conductor de la unidad?</strong> La unidad quedará disponible para asignar un nuevo conductor. Los registros anteriores se conservarán.</p>
+        <p class="muted">{{ a.driverName }} · operador {{ a.operatorCode }} · unidad {{ u.code }}</p>
+        <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="busy()" (click)="xm.requestClose()">Cancelar</button>
+          <button type="button" class="btn danger" [disabled]="busy()" (click)="endCurrent()" [appBusy]="busy()" busyLabel="Desvinculando…">Desvincular conductor</button></div>
+      </app-modal>
+    }
+
+    @if (current(); as a) {
+      <section class="panel" aria-labelledby="ud-ex">
+        <h2 id="ud-ex">Excepciones y acuerdos</h2>
+        <p class="muted">Una excepción fija un importe distinto para un día concreto (por ejemplo, un descuento acordado). Si hay un acuerdo escrito, se muestra arriba.</p>
+        @if (!load.data().exceptions.length) { <p class="muted">Sin excepciones registradas.</p> }
+        @else {
+          <ul class="plain">@for (x of load.data().exceptions; track x.id) {
+            <li>{{ dmy(x.onDate) }} · {{ usd(x.amountCents) }}@if (x.reason) { · {{ x.reason }} }
+              @if (perms.canOperate()) { @if (confirmEx() === x.id) { <span class="action-bar start">¿Quitar esta excepción? <button type="button" class="btn sm danger" [disabled]="busy()" (click)="removeException(x)" [appBusy]="busy()" busyLabel="Eliminando…">Sí, quitar</button> <button type="button" class="btn sm" (click)="confirmEx.set(null)">Cancelar</button></span> }
+                @else { <app-icon-button icon="trash" label="Quitar excepción" tone="danger" (click)="confirmEx.set(x.id)" /> } }</li>
+          }</ul>
+        }
+        @if (perms.canOperate()) {
+        <form class="form-grid" (ngSubmit)="addException()">
+          <div class="field"><label for="ex-date">Fecha</label><input id="ex-date" name="exd" type="date" [ngModel]="exDate()" (ngModelChange)="exDate.set($event)" /></div>
+          <div class="field"><label for="ex-amt">Importe del día (USD)</label><input id="ex-amt" name="exa" inputmode="decimal" [ngModel]="exAmount()" (ngModelChange)="exAmount.set($event)" /></div>
+          <div class="field"><label for="ex-reason">Motivo (opcional)</label><input id="ex-reason" name="exr" autocomplete="off" [ngModel]="exReason()" (ngModelChange)="exReason.set($event)" /></div>
+          <div class="field"><span class="sr-only">Guardar</span><button type="submit" class="btn" [disabled]="busy() || !exValid()" [appBusy]="busy()" busyLabel="Guardando…">Agregar excepción</button></div>
+        </form>
+        }
+      </section>
+    }
+
+    <section><h2>Historial de asignaciones</h2>
+      @if (!load.data().assignments.length) { <p class="muted">Sin asignaciones registradas.</p> }
+      @else { <ul class="plain">@for (a of load.data().assignments; track a.id) {
+        <li>{{ a.driverName }} (op. {{ a.operatorCode }}) · {{ dmy(a.validFrom) }} → {{ a.validTo ? dmy(a.validTo) : 'vigente' }}@if (a.dailyRateCents !== null) { · {{ usd(a.dailyRateCents) }}/día }</li> }</ul> }
+    </section>
+  }
+</div>

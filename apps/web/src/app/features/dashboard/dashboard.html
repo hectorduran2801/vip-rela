@@ -1,0 +1,52 @@
+<div class="page">
+  <section class="quick" aria-label="Accesos rápidos">
+    @for (q of quick; track q.label) {
+      <a class="btn" [routerLink]="q.link"><app-icon [name]="q.icon" /> {{ q.label }}</a>
+    }
+  </section>
+
+  @if (loader.error(); as e) {
+    <app-error-state [message]="e" (retry)="loader.reload()" />
+  } @else if (loader.loading() && !data()) {
+    <app-loading variant="dashboard" />
+  } @else if (data(); as d) {
+    <h2>Conductores</h2>
+    <section class="stats" aria-label="Conductores">
+      <div class="card stat"><div class="label">Total</div><div class="value">{{ d.drivers.total }}</div></div>
+      <div class="card stat"><div class="label">Activos</div><div class="value">{{ d.drivers.active }}</div></div>
+      <div class="card stat"><div class="label">Inactivos</div><div class="value">{{ d.drivers.inactive }}</div></div>
+      <div class="card stat"><div class="label">Suspendidos</div><div class="value">{{ d.drivers.suspended }}</div></div>
+      <div class="card stat"><div class="label">Pendientes de aprobación</div><div class="value">{{ d.drivers.pending_approval }}</div></div>
+    </section>
+
+    <h2>Cobranza</h2>
+    <section class="stats" aria-label="Cobranza">
+      <div class="card stat"><div class="label">Pendiente por cobrar (cartera activa)</div><div class="value pending">{{ usd(d.collections.pending_total_cents) }}</div><div class="muted">{{ d.collections.drivers_with_debt }} conductores con deuda · suma de los saldos del Excel</div></div>
+      <div class="card stat"><div class="label">Cobrado hoy (bruto)</div><div class="value">{{ usd(d.collections.collected_today_gross_cents) }}</div></div>
+      <div class="card stat"><div class="label">Neto de hoy (empresa)</div><div class="value">{{ usd(d.collections.collected_today_net_cents) }}</div></div>
+      <div class="card stat"><div class="label">Cuenta de la semana</div><div class="value">{{ usd(d.collections.week_charged_cents) }}</div></div>
+      <div class="card stat"><div class="label">Neto de la semana</div><div class="value">{{ usd(d.collections.week_net_cents) }}</div></div>
+      <div class="card stat"><div class="label">Crédito a favor total</div><div class="value credit">{{ usd(d.collections.credits_total_cents) }}</div></div>
+    </section>
+
+  }
+
+  <app-former-debts />
+
+  <!-- Fuera del bloque de totales: los dos datos se piden a la vez. Se muestra cuando los totales ya ocupan su sitio, para no desplazarse. -->
+  <div [hidden]="loader.loading() && !data()"><app-week-payments /></div>
+
+  @if (data(); as d) {
+    <h2>WhatsApp</h2>
+    @if (!d.whatsapp.sessions.length) {
+      <app-empty-state icon="chat" title="WhatsApp sin configurar" hint="Todavía no hay sesión de WhatsApp." />
+    } @else {
+      <ul class="cards">
+        @for (s of d.whatsapp.sessions; track s.id) {
+          <li class="card"><div class="row"><strong>WhatsApp · {{ s.label }}</strong><span class="badge" [class.paid]="s.status === 'connected'" [class.pending]="s.status === 'failed'">{{ waLabel[s.status] }}</span></div>
+            <a routerLink="/messages/whatsapp">Administrar conexión</a></li>
+        }
+      </ul>
+    }
+  }
+</div>

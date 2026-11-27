@@ -1,0 +1,53 @@
+<form class="panel" (ngSubmit)="save()" novalidate aria-labelledby="df-title">
+  <h2 id="df-title">{{ driver() ? 'Editar conductor' : 'Nuevo conductor' }}</h2>
+
+  <section class="form-section" aria-labelledby="df-s-id">
+    <h3 id="df-s-id">Identificación</h3>
+    <div class="form-grid">
+      <div class="field"><label for="df-op">Código de operario *</label>
+        <input id="df-op" name="op" autocomplete="off" [ngModel]="form().operatorCode" (ngModelChange)="patch('operatorCode', $event)" [attr.aria-invalid]="touched() && errors()['operatorCode'] ? 'true' : null" />
+        @if (touched() && errors()['operatorCode']; as m) { <small class="pending">{{ m }}</small> }</div>
+      <div class="field"><label for="df-id">Cédula (opcional)</label>
+        <input id="df-id" name="nid" autocomplete="off" [ngModel]="form().nationalId" (ngModelChange)="patch('nationalId', $event)" [attr.aria-invalid]="touched() && errors()['nationalId'] ? 'true' : null" />
+        @if (touched() && errors()['nationalId']; as m) { <small class="pending">{{ m }}</small> }</div>
+      <div class="field form-field--full"><label for="df-fn">Nombre completo *</label>
+        <input id="df-fn" name="fn" autocomplete="name" [ngModel]="form().firstName" (ngModelChange)="patch('firstName', $event)" [attr.aria-invalid]="touched() && errors()['firstName'] ? 'true' : null" />
+        @if (touched() && errors()['firstName']; as m) { <small class="pending">{{ m }}</small> }</div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="df-s-ct">
+    <h3 id="df-s-ct">WhatsApp</h3>
+    <div class="form-grid">
+      <div class="field"><label for="df-wa">WhatsApp</label>
+        <input id="df-wa" name="wa" inputmode="tel" placeholder="6000-0000 o +50760000000" [ngModel]="form().phoneE164 ?? ''" (ngModelChange)="text('phoneE164', $event)" />
+        @if (errors()['phoneE164']; as m) { <small class="pending">{{ m }}</small> }</div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="df-s-lic">
+    <h3 id="df-s-lic">Licencia</h3>
+    <div class="form-grid">
+      <div class="field"><label for="df-lic">Número de licencia</label><input id="df-lic" name="lic" autocomplete="off" [ngModel]="form().licenseNumber ?? ''" (ngModelChange)="text('licenseNumber', $event)" /></div>
+      <div class="field"><label for="df-exp">Vencimiento de licencia</label><input id="df-exp" name="exp" type="date" [ngModel]="form().licenseExpiresOn ?? ''" (ngModelChange)="text('licenseExpiresOn', $event)" /></div>
+    </div>
+  </section>
+
+  <section class="form-section" aria-labelledby="df-s-st">
+    <h3 id="df-s-st">Estado</h3>
+    <div class="form-grid">
+      <div class="field"><label for="df-st">Estado del conductor</label>
+        <select id="df-st" name="st" [ngModel]="form().status" (ngModelChange)="patch('status', $event)">
+          @for (s of statuses; track s.v) { <option [value]="s.v">{{ s.label }}</option> }
+        </select></div>
+      <div class="field form-field--full"><label for="df-notes">Observaciones</label><textarea id="df-notes" name="notes" [rows]="3" [ngModel]="form().notes ?? ''" (ngModelChange)="text('notes', $event)"></textarea></div>
+    </div>
+  </section>
+
+  <div aria-live="polite">@if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }</div>
+  <div class="form-actions">
+    <button type="button" class="btn" (click)="cancelled.emit()">Cancelar</button>
+    <button type="submit" class="btn primary" [disabled]="saving() || unverified()" [appBusy]="saving()" busyLabel="Guardando…">Guardar</button>
+    @if (unverified()) { <button type="button" class="btn" (click)="verifySaved()">Comprobar ahora</button> }
+  </div>
+</form>

@@ -1,0 +1,48 @@
+<a class="skip" href="#contenido">Saltar al contenido</a>
+<div class="crm" [class.collapsed]="collapsed() && !bp.isMobile()" [class.mobile]="bp.isMobile()" (keydown.escape)="closeDrawer()">
+  @if (bp.isMobile() && drawer()) { <div class="scrim" (click)="closeDrawer()" aria-hidden="true"></div> }
+  @if (!bp.isMobile() || drawer()) {
+    <aside class="sidebar" [class.drawer]="bp.isMobile()" (keydown)="trap($event)" #side>
+      <div class="logo"><span class="mark vip" aria-label="VIP" role="img">VIP</span>@if ((!collapsed() || bp.isMobile()) && displayName.name()) { <strong class="who" [title]="displayName.name()">{{ displayName.name() }}</strong> }</div>
+      <nav id="menu-principal" aria-label="Principal">
+        @for (n of items; track n.path) { <ng-container *ngTemplateOutlet="link; context: { $implicit: n }" /> }
+        @if (extras().length) {
+          <div class="nav-group" role="presentation">Administración</div>
+          @for (n of extras(); track n.path) { <ng-container *ngTemplateOutlet="link; context: { $implicit: n }" /> }
+        }
+      </nav>
+      @if (!bp.isMobile()) {
+        <button type="button" class="collapse" (click)="toggleSidebar()" [attr.aria-label]="collapsed() ? 'Expandir menú lateral' : 'Contraer menú lateral'"
+                [attr.aria-expanded]="!collapsed()" aria-controls="menu-principal" [attr.data-tip]="collapsed() ? 'Expandir menú' : null">
+          <app-icon name="chevrons" /><span class="lbl">Contraer menú</span>
+        </button>
+      }
+    </aside>
+  }
+  <div class="main-col">
+    <header class="topbar">
+      @if (bp.isMobile()) {
+        <button type="button" class="btn icon" (click)="toggleSidebar()" [attr.aria-expanded]="drawer()" aria-controls="menu-principal" aria-label="Abrir menú"><app-icon name="menu" /></button>
+      }
+      @if (crumb().parent && !inSettings()) {
+        <nav class="crumbs" aria-label="Ruta de navegación"><a [routerLink]="crumb().parent!.link">{{ crumb().parent!.label }}</a><span aria-hidden="true">/</span><h1 class="page-title" aria-current="page">{{ crumb().leaf }}</h1></nav>
+      } @else { <h1 class="page-title">{{ title() }}</h1> }
+      <span class="grow"></span>
+      <app-account-switch />
+      <app-whatsapp-status />
+      <app-user-menu />
+    </header>
+    <main id="contenido" tabindex="-1">
+      <app-schedule-notice />
+      @if (crumb().parent; as p) { <a class="back-link" [routerLink]="p.link"><app-icon name="chevronr" class="flip" />Volver a {{ p.label.toLowerCase() }}</a> }
+      <router-outlet />
+    </main>
+  </div>
+</div>
+<app-toasts />
+<ng-template #link let-n>
+  <a [routerLink]="n.path" [class.active]="active(n)" [attr.aria-current]="active(n) ? 'page' : null" (click)="closeDrawer()"
+     [attr.data-tip]="collapsed() && !bp.isMobile() ? n.label : null" [attr.aria-label]="collapsed() && !bp.isMobile() ? n.label : null">
+    <app-icon [name]="n.icon" /><span class="lbl">{{ n.label }}</span>
+  </a>
+</ng-template>

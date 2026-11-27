@@ -1,0 +1,27 @@
+{
+  "name": "vip",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @vip/web dev",
+    "dev:api": "pnpm --filter @vip/api dev",
+    "dev:worker": "pnpm --filter @vip/whatsapp-worker dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "db:reset:dev": "node scripts/db-reset-dev/cli.mjs",
+    "db:check": "node --env-file-if-exists=.env scripts/db-check/cli.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:setup": "node scripts/dev-setup.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "pg": "^8.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.angular/
+.env
+.env.*
+!.env.example
+.wwebjs_auth/
+.openwa-sessions/
+*.xlsx
+*.log
+.DS_Store
+
+# Datos reales y diagnósticos locales: nunca al repositorio
+backups-dev/
+.logs/

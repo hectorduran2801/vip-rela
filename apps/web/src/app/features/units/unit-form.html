@@ -1,0 +1,43 @@
+<form class="panel" (ngSubmit)="save()" novalidate>
+  <h2>{{ unit() ? 'Editar unidad' : 'Nueva unidad' }}</h2>
+  <section class="form-section" aria-labelledby="uf-s-id"><h3 id="uf-s-id">Identificación</h3>
+  <div class="form-grid">
+    <div class="field"><label for="uf-code">Código de unidad * <span class="muted">(obligatorio)</span></label>
+      <input id="uf-code" name="code" [ngModel]="form().code" (ngModelChange)="patch('code', $event)" [attr.aria-invalid]="touched() && errors()['code'] ? 'true' : null" />
+      @if (touched() && errors()['code']; as m) { <small class="pending">{{ m }}</small> }</div>
+    <div class="field"><label for="uf-plate">Placa</label><input id="uf-plate" name="plate" [ngModel]="form().plate ?? ''" (ngModelChange)="text('plate', $event)" /></div>
+    <div class="field"><label for="uf-make">Marca</label><input id="uf-make" name="make" [ngModel]="form().make ?? ''" (ngModelChange)="text('make', $event)" /></div>
+    <div class="field"><label for="uf-model">Modelo</label><input id="uf-model" name="model" [ngModel]="form().model ?? ''" (ngModelChange)="text('model', $event)" /></div>
+    <div class="field"><label for="uf-year">Año</label><input id="uf-year" name="year" type="number" inputmode="numeric" [ngModel]="form().year" (ngModelChange)="year($event)" />
+      @if (errors()['year']; as m) { <small class="pending">{{ m }}</small> }</div>
+  </div></section>
+  <section class="form-section" aria-labelledby="uf-s-st"><h3 id="uf-s-st">Estado</h3>
+  <div class="form-grid">
+    <div class="field"><label for="uf-st">Estado del vehículo</label>
+      <select id="uf-st" name="st" [ngModel]="form().vehicleStatus" (ngModelChange)="patch('vehicleStatus', $event)">
+        @for (s of statuses; track s.v) { <option [value]="s.v">{{ s.label }}</option> }
+      </select></div>
+  </div></section>
+  <section class="form-section" aria-labelledby="uf-s-cond"><h3 id="uf-s-cond">Acuerdo / condición especial</h3>
+    <p class="muted">Texto libre (CHAPA, RESCATE, CUSTODIA, TAPICERÍA, ACUERDO, REVISADO PENDIENTE… lo que necesites). Es independiente del estado operativo: <strong>no cambia tarifas, cuotas, pagos, saldos ni asignaciones</strong>.</p>
+    @if (unit(); as u) {
+      <app-unit-agreement [unit]="u" />
+    } @else {
+      <div class="form-grid">
+        <div class="field"><label for="ag-text">Acuerdo / condición especial</label>
+          <input id="ag-text" name="agreement" list="ag-suggest" maxlength="200" autocomplete="off" [ngModel]="agreement()" (ngModelChange)="agreement.set($event)" />
+          <datalist id="ag-suggest">@for (s of suggestions; track s) { <option [value]="s"></option> }</datalist></div>
+        <div class="field form-field--full"><label for="ag-note">Observación (opcional)</label>
+          <textarea id="ag-note" name="note" [rows]="2" maxlength="1000" [ngModel]="agreementNote()" (ngModelChange)="agreementNote.set($event)"></textarea></div>
+      </div>
+      <p class="muted">Se guardará junto con la unidad al crearla.</p>
+    }
+  </section>
+  <section class="form-section" aria-labelledby="uf-s-obs"><h3 id="uf-s-obs">Observaciones</h3>
+    <div class="form-grid"><div class="field form-field--full"><label for="uf-notes">Notas</label><textarea id="uf-notes" name="notes" [rows]="3" [ngModel]="form().notes ?? ''" (ngModelChange)="text('notes', $event)"></textarea></div></div></section>
+  <div aria-live="polite">@if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }</div>
+  <div class="form-actions">
+    <button type="button" class="btn" (click)="cancelled.emit()">Cancelar</button>
+    <button type="submit" class="btn primary" [disabled]="saving()" [appBusy]="saving()" busyLabel="Guardando…">Guardar</button>
+  </div>
+</form>

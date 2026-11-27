@@ -1,0 +1,73 @@
+<div class="page">
+<div class="toolbar">
+  <div class="check"><input id="vig" type="checkbox" [ngModel]="onlyCurrent()" (ngModelChange)="onlyCurrent.set($event)" /><label for="vig">Solo vigentes (desmarca para ver el historial)</label></div>
+  <span class="grow"></span>
+  @if (perms.canOperate()) { <button type="button" class="btn primary" (click)="creating.set(true)">Nueva asignación</button> }
+</div>
+<div aria-live="polite">@if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }
+  @if (ok(); as m) { <div class="alert ok">{{ m }}</div> }
+  @if (list.error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }</div>
+
+@if (creating()) {
+  <form (ngSubmit)="create()" novalidate>
+   <app-modal #nm title="Nueva asignación" size="md" [busy]="saving()" (closed)="creating.set(false)">
+    <div class="form-grid">
+      <div class="field"><label for="a-driver">Conductor</label>
+        <select id="a-driver" name="driver" [ngModel]="driverId()" (ngModelChange)="driverId.set($event)">
+          <option value="">Selecciona…</option>
+          @for (d of drivers.data(); track d.id) { @if (d.status !== 'inactive') { <option [value]="d.id">{{ d.operatorCode }} · {{ d.firstName }} {{ d.lastName }}</option> } }
+        </select></div>
+      <div class="field"><label for="a-unit">Unidad</label>
+        <select id="a-unit" name="unit" [ngModel]="unitId()" (ngModelChange)="unitId.set($event)">
+          <option value="">Selecciona…</option>
+          @for (u of units.data(); track u.id) { @if (u.vehicleStatus === 'active') { <option [value]="u.id">{{ u.code }}</option> } }
+        </select></div>
+      <div class="field"><label for="a-from">Vigente desde</label><input id="a-from" name="from" type="date" [ngModel]="validFrom()" (ngModelChange)="validFrom.set($event)" /></div>
+      <div class="field"><label for="a-rate">Tarifa diaria (USD)</label><input id="a-rate" name="rate" inputmode="decimal" placeholder="36.00" [ngModel]="rate()" (ngModelChange)="rate.set($event)" /></div>
+    </div>
+    @if (weekly(); as w) { <p class="muted">Tarifa semanal informativa (6 × diaria): <strong>{{ usd(w) }}</strong>.</p> }
+    <div class="field"><label for="a-note">Acuerdo (nota, opcional)</label><input id="a-note" name="note" [ngModel]="note()" (ngModelChange)="note.set($event)" /></div>
+    <p class="muted">La asignación y su tarifa se crean en una sola operación. Un conductor o una unidad no pueden tener dos asignaciones vigentes a la vez; para cambiar de conductor usa la ficha de la unidad.</p>
+    <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="saving()" (click)="nm.requestClose()">Cancelar</button> <button type="submit" class="btn primary" [disabled]="saving() || !valid()" [appBusy]="saving()" busyLabel="Guardando…">{{ saving() ? 'Guardando…' : 'Crear asignación' }}</button></div>
+   </app-modal>
+  </form>
+}
+
+@if (confirmEnd(); as c) {
+  <app-modal #cm [alert]="true" size="sm" title="Desvincular conductor" (closed)="confirmEnd.set(null)">
+    <p><strong>¿Deseas desvincular a este conductor de la unidad?</strong> La unidad quedará disponible para asignar un nuevo conductor. Los registros anteriores se conservarán.</p>
+    <p class="muted">{{ c.driverName }} · unidad {{ c.unitCode }}</p>
+    <div modalFooter class="form-actions"><button type="button" class="btn" (click)="cm.requestClose()">Cancelar</button> <button type="button" class="btn danger" (click)="doEnd(c)">Desvincular conductor</button></div>
+  </app-modal>
+}
+@if (rateFor(); as r) { <app-modal #tm title="Cambiar tarifa" size="md" (closed)="rateFor.set(null)"><app-rate-change [assignment]="r" (done)="rateChanged($event)" (cancelled)="tm.requestClose()" /></app-modal> }
+@if (list.loading() && !list.data().length) { <app-loading variant="table" /> }
+@else if (!list.error() && !shown().length) { <div class="empty">No hay asignaciones para mostrar.</div> }
+@else if (bp.isMobile()) {
+  <ul class="cards" aria-label="Asignaciones">
+    @for (a of shown(); track a.id) {
+      <li class="card"><div class="row"><h3>{{ a.operatorCode }} · {{ a.driverName }}</h3><span class="badge" [class.paid]="!a.validTo">{{ a.validTo ? 'Cerrada' : 'Vigente' }}</span></div>
+        <div>Unidad <strong>{{ a.unitCode }}</strong>@if (condOf(a); as c) { <span class="badge cond-badge ag-badge" [attr.title]="c">{{ c }}</span> }</div>
+        <div class="muted">Inicio {{ dmy(a.validFrom) }}@if (a.validTo) { · Fin {{ dmy(a.validTo) }} }</div>
+        @if (a.dailyRateCents !== null) { <div class="muted">Tarifa diaria {{ usd(a.dailyRateCents) }}</div> }
+        @if (!a.validTo && perms.canOperate()) { <div class="action-bar start"><span class="icon-actions" role="group" [attr.aria-label]="'Acciones de ' + a.driverName">
+          <app-icon-button icon="card" label="Cambiar tarifa" [labelOnMobile]="true" (click)="rateFor.set(a)" />
+          <app-icon-button icon="user" label="Cambiar conductor o unidad" [labelOnMobile]="true" [link]="['/vehicles', a.unitId]" />
+          <app-icon-button icon="user-minus" label="Desvincular conductor" tone="warn" [labelOnMobile]="true" (click)="confirmEnd.set(a)" /></span></div> }</li>
+    }
+  </ul>
+} @else {
+  <div class="table-wrap"><table aria-label="Asignaciones">
+    <thead><tr><th scope="col">Código de operario</th><th scope="col">Nombre y apellido</th><th scope="col">Código de unidad</th><th scope="col">Estado de asignación</th><th scope="col">Fecha de inicio</th><th scope="col">Fecha de fin</th><th scope="col">Acciones</th></tr></thead>
+    <tbody>@for (a of shown(); track a.id) {
+      <tr><td>{{ a.operatorCode }}</td><td><a [routerLink]="['/drivers', a.driverId]">{{ a.driverName }}</a></td>
+        <td>{{ a.unitCode }}@if (condOf(a); as c) { <span class="badge cond-badge ag-badge" [attr.title]="c">{{ c }}</span> }</td>
+        <td><span class="badge" [class.paid]="!a.validTo">{{ a.validTo ? 'Cerrada' : 'Vigente' }}</span></td>
+        <td class="nowrap">{{ dmy(a.validFrom) }}</td><td class="nowrap">{{ a.validTo ? dmy(a.validTo) : '' }}</td>
+        <td class="nowrap">@if (!a.validTo && perms.canOperate()) { <span class="icon-actions" role="group" [attr.aria-label]="'Acciones de ' + a.driverName">
+          <app-icon-button icon="card" label="Cambiar tarifa" (click)="rateFor.set(a)" />
+          <app-icon-button icon="user" label="Cambiar conductor o unidad" [link]="['/vehicles', a.unitId]" />
+          <app-icon-button icon="user-minus" label="Desvincular conductor" tone="warn" (click)="confirmEnd.set(a)" /></span> }</td></tr>
+    }</tbody></table></div>
+}
+</div>

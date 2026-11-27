@@ -1,0 +1,40 @@
+<div class="page">
+  <div class="filterbar">
+    <div class="field"><label for="q">Buscar conductor</label>
+      <input id="q" type="search" placeholder="Nombre, operador o WhatsApp" autocomplete="off" [ngModel]="query()" (ngModelChange)="query.set($event)" /></div>
+    <div class="field"><label for="st">Estado</label>
+      <select id="st" [ngModel]="status()" (ngModelChange)="status.set($event)">
+        <option value="all">Todos los estados</option>
+        @for (s of statusOptions; track s) { <option [value]="s">{{ labels[s] }}</option> }
+      </select></div>
+    @if (perms.canOperate()) {
+      <a routerLink="/drivers/new" class="btn primary">Nuevo conductor</a>
+    }
+  </div>
+  @if (list.error(); as e) { <app-error-state [message]="e" (retry)="list.reload()" /> }
+  @if (list.loading() && !list.data().length) { <app-loading variant="table" /> }
+  @else if (!list.error() && !list.data().length) { <app-empty-state icon="users" title="Aún no hay conductores" hint="Crea el primero o impórtalos desde Configuración → Datos." /> }
+  @else if (!filtered().length) { <app-empty-state title="Sin resultados" hint="Prueba con otra búsqueda o estado." /> }
+  @else if (bp.isMobile()) {
+    <ul class="cards" aria-label="Conductores">
+      @for (d of filtered(); track d.id; let i = $index) {
+        <li class="card">
+          <div class="row"><h3><span class="muted row-n">{{ i + 1 }}.</span> <a [routerLink]="['/drivers', d.id]">{{ d.firstName }} {{ d.lastName }}</a></h3><span class="badge" [class.paid]="d.status === 'active'" [class.pending]="d.status === 'suspended'">{{ labels[d.status] }}</span></div>
+          <div class="muted">Operador {{ d.operatorCode }}@if (d.nationalId) { · {{ d.nationalId }} }</div>
+          <div class="muted">{{ d.phone ?? d.phoneE164 ?? 'Sin teléfono' }}</div>
+          <div class="action-bar start"><app-manage-entity kind="drivers" [entityId]="d.id" [name]="d.firstName + ' ' + d.lastName" [archived]="d.status === 'inactive'" [labelOnMobile]="true" (changed)="list.reload()" (deleted)="list.reload()" /></div>
+        </li>
+      }
+    </ul>
+  } @else {
+    <div class="table-wrap"><table aria-label="Conductores">
+      <thead><tr><th scope="col" class="row-n">#</th><th scope="col">Operador</th><th scope="col">Nombre</th><th scope="col">Cédula</th><th scope="col">Teléfono</th><th scope="col">WhatsApp</th><th scope="col">Licencia vence</th><th scope="col">Recordatorios</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+      <tbody>
+        @for (d of filtered(); track d.id; let i = $index) {
+          <tr><td class="row-n muted">{{ i + 1 }}</td><td>{{ d.operatorCode }}</td><td><a [routerLink]="['/drivers', d.id]">{{ d.firstName }} {{ d.lastName }}</a></td><td>{{ d.nationalId ?? '—' }}</td>
+            <td>{{ d.phone ?? '' }}</td><td>{{ d.phoneE164 ?? '' }}</td><td>{{ d.licenseExpiresOn ?? '' }}</td><td>{{ d.remindersPaused ? 'Pausados' : '' }}</td><td>{{ labels[d.status] }}</td><td class="nowrap"><app-manage-entity kind="drivers" [entityId]="d.id" [name]="d.firstName + ' ' + d.lastName" [archived]="d.status === 'inactive'" (changed)="list.reload()" (deleted)="list.reload()" /></td></tr>
+        }
+      </tbody></table></div>
+  }
+  <app-former-debts [detail]="true" />
+</div>

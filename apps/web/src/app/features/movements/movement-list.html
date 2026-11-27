@@ -1,0 +1,26 @@
+@if (!movements().length) {
+  <app-empty-state class="compact" title="Sin movimientos" hint="Todavía no hay cuotas, pagos ni ajustes para esta asignación." />
+} @else if (bp.isMobile()) {
+  <ul class="cards mv-cards" aria-label="Movimientos">
+    @for (m of sorted(); track m.kind + m.refId + m.occurredAt) {
+      <li class="card mv-card" [class.is-voided]="voided(m)">
+        <div class="row"><span class="mv-chip" [class]="'mv-chip ' + chip(m)"><span aria-hidden="true">{{ glyph(m) }}</span> {{ kind(m) }}</span>
+          <span class="money mv-amt" [class.up]="effect(m) > 0" [class.down]="effect(m) < 0">{{ signed(m) }}</span></div>
+        <div class="muted">{{ when(m) }}@if (detail(m)) { · {{ detail(m) }} }</div>
+      </li>
+    }
+  </ul>
+} @else {
+  <div class="table-wrap"><table aria-label="Movimientos" class="mv-table">
+    <thead><tr><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Detalle</th><th scope="col" class="num">Efecto en la deuda</th><th scope="col" class="num">Comisión</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+    <tbody>
+      @for (m of sorted(); track m.kind + m.refId + m.occurredAt) {
+        <tr [class.is-voided]="voided(m)"><td class="nowrap">{{ when(m) }}</td>
+          <td><span [class]="'mv-chip ' + chip(m)"><span aria-hidden="true">{{ glyph(m) }}</span> {{ kind(m) }}</span></td>
+          <td>{{ detail(m) }}</td>
+          <td class="num"><span class="mv-amt" [class.up]="effect(m) > 0" [class.down]="effect(m) < 0">{{ signed(m) }}</span></td>
+          <td class="num">{{ m.commissionCents ? usd(m.commissionCents) : '—' }}</td>
+          </tr>
+      }
+    </tbody></table></div>
+}

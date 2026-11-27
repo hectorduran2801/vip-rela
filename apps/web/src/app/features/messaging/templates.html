@@ -1,0 +1,139 @@
+<div class="page">
+  @if (!embedded()) {
+  <div class="toolbar"><h2>Plantillas de mensaje</h2><span class="grow"></span>
+    @if (perms.canOperate()) { <button type="button" class="btn primary" (click)="edit(null)">Nueva plantilla</button> }</div>
+  <p class="muted one-line">Cada horario usa una plantilla. Usa variables entre dobles llaves y comprueba el resultado con los datos reales de un conductor.</p>
+  <div aria-live="polite">
+    @if (msg(); as m) { <div class="alert ok">{{ m }}</div> }
+    @if (error(); as e) { @if (!form()) { <div class="alert error" role="alert"><app-err [text]="e" /></div> } }
+  </div>
+  }
+
+  @if (detach(); as d) {
+    <app-modal #dm [alert]="true" size="sm" title="Plantilla en uso" [busy]="detaching()" (closed)="detach.set(null)">
+      <p><strong>«{{ d.template.name }}» está asignada a:</strong> {{ usageTxt(d.usage) }}.</p>
+      <p class="muted">Si continúas, esos horarios quedarán <strong>desactivados y sin plantilla</strong> (no enviarán nada) y la plantilla se eliminará. Podrás asignarles otra plantilla y activarlos cuando quieras.</p>
+      <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="detaching()" (click)="dm.requestClose()">Cancelar</button>
+        <button type="button" class="btn danger" (click)="detachAndDelete()" [appBusy]="detaching()" busyLabel="Eliminando…">Quitar de los horarios y eliminar</button></div>
+    </app-modal>
+  }
+  @if (form(); as f) {
+    <form (ngSubmit)="save()" novalidate>
+      <app-modal #m [title]="f.id ? 'Editar plantilla' : 'Nueva plantilla'" size="xl" [busy]="saving()" (closed)="form.set(null)">
+      <div class="field"><label for="tf-name">Nombre *</label>
+        <input id="tf-name" name="name" autocomplete="off" [ngModel]="f.name" (ngModelChange)="patch('name', $event)" /></div>
+      <div class="tpl-edit-grid">
+        <div class="tpl-col-left">
+          <div class="field"><label for="tf-body">Texto del mensaje *</label>
+            <textarea #bodyEl id="tf-body" name="body" [rows]="8" [ngModel]="f.body" (ngModelChange)="patch('body', $event)" [attr.maxlength]="max" aria-describedby="tf-count tf-warn"></textarea>
+            <small id="tf-count" class="muted" [class.pending]="f.body.length >= max">{{ f.body.length }} / {{ max }} caracteres</small></div>
+          <div id="tf-warn" aria-live="polite">
+            @for (w of warnings(); track w) { <div class="alert warn" role="status">{{ w }}</div> }
+            @for (n of notes(); track n) { <div class="alert info" role="note">{{ n }}</div> }
+          </div>
+          <details class="meaning-help"><summary>Qué cambió en las variables</summary>
+            <ul class="plain"><li>{{ '{{nombre}}' }} equivale a {{ '{{nombre_completo}}' }} (nombre completo, sin dividir); {{ '{{apellido}}' }} ya no existe.</li><li>{{ '{{fecha}}' }} es la fecha completa en español.</li><li>{{ '{{saldo_total}}' }} es la deuda exigible hoy.</li></ul>
+            <p class="muted">Tus plantillas guardadas siguen funcionando: no se modifican solas.</p></details>
+
+        <aside class="tpl-vars" aria-labelledby="vars-title">
+          <h3 id="vars-title">Variables</h3>
+          <div class="field"><label for="var-q" class="sr-only">Buscar variable</label>
+            <input id="var-q" type="search" name="varq" placeholder="Buscar variable…" autocomplete="off" [ngModel]="varQuery()" (ngModelChange)="varQuery.set($event)" /></div>
+          @if (catalog.error(); as e) { <app-error-state [message]="e" (retry)="catalog.reload()" /> }
+          @else if (catalog.loading() && !catalog.data().length) { <app-loading variant="list" [rows]="4" label="Cargando variables…" /> }
+          @else if (!groups().length) { <p class="muted">Ninguna variable coincide con la búsqueda.</p> }
+          @else {
+            @for (g of groups(); track g.name) {
+              <details class="var-group" [class.legacy]="g.legacy" [open]="!bp.isMobile() || !!varQuery()">
+                <summary><strong>{{ g.name }}</strong> <span class="muted">({{ g.vars.length }})</span></summary>
+                @if (g.name === 'Textos inteligentes') { <p class="alert warn smart-note" role="note">{{ smartWarning }}</p> }
+                @if (g.legacy) { <p class="muted">Se conserva por compatibilidad; no se recomienda para plantillas nuevas.</p> }
+                <ul class="plain var-list">
+                  @for (v of g.vars; track v.code) {
+                    <li><button type="button" class="var-item" [class.smart]="g.name === 'Textos inteligentes'" (click)="insert(v.code)" [attr.aria-label]="'Insertar ' + v.label + ' ' + tag(v.code)" [title]="'Insertar ' + tag(v.code)">
+                      <span class="var-top"><strong>{{ v.label }}</strong>@if (g.legacy) { <span class="chip-s">Antigua / compatibilidad</span> }</span>
+                      <code>{{ tag(v.code) }}</code>
+                      <span class="var-desc">{{ v.description }}</span>
+                      <span class="var-ex">Ejemplo: {{ v.example }}</span></button></li>
+                  }
+                </ul>
+              </details>
+            }
+          }
+        </aside>
+        </div>
+        <div class="tpl-col-right">
+          <h3>Vista previa</h3>
+          <div class="chips" role="group" aria-label="Tipo de vista previa">
+            <button type="button" class="chip" [attr.aria-pressed]="previewMode() === 'example'" [class.on]="previewMode() === 'example'" (click)="previewMode.set('example')">Con valores de ejemplo</button>
+            <button type="button" class="chip" [attr.aria-pressed]="previewMode() === 'real'" [class.on]="previewMode() === 'real'" (click)="previewMode.set('real')">Con un conductor real</button>
+          </div>
+          @if (previewMode() === 'example') {
+            <div aria-live="polite">
+              @if (!examplePreview().ready) { <p class="muted">Cargando ejemplos…</p> }
+              @else if (!f.body.trim()) { <p class="muted">Escribe el texto para ver cómo quedaría.</p> }
+              @else {
+                <blockquote class="wa-bubble" aria-label="Vista previa con valores de ejemplo">{{ examplePreview().text }}</blockquote>
+                @if (examplePreview().unresolved.length) { <div class="alert warn" role="status">Este mensaje no se enviaría: variables sin resolver ({{ examplePreview().unresolved.join(', ') }}).</div> }
+              }
+            </div>
+          } @else {
+            <div class="form-grid">
+              <div class="field"><label for="pv-driver">Conductor</label>
+                <select id="pv-driver" name="pvd" [ngModel]="previewFor()" (ngModelChange)="previewFor.set($event)">
+                  <option value="">Selecciona un conductor…</option>
+                  @for (a of assignments.data(); track a.id) { <option [value]="a.id">{{ a.operatorCode }} · {{ a.driverName }} ({{ a.unitCode }})</option> }
+                </select></div>
+              <div class="field"><label for="pv-date">Fecha (opcional; por defecto hoy)</label>
+                <input id="pv-date" name="pvdate" type="date" [ngModel]="previewDate()" (ngModelChange)="previewDate.set($event)" /></div>
+            </div>
+            <div class="action-bar start"><button type="button" class="btn" [disabled]="!previewFor() || !f.body.trim()" (click)="preview(f.body)" [appBusy]="previewing()" busyLabel="Generando…">Ver vista previa</button></div>
+            <div aria-live="polite">
+              @if (previewError(); as e) { <app-modal-error title="No se pudo generar la vista previa" [text]="e" /> }
+              @if (previewText(); as t) { <blockquote class="wa-bubble" aria-label="Vista previa del mensaje">{{ t }}</blockquote> }
+              @if (previewUnresolved().length) { <div class="alert warn" role="alert">Este mensaje no se enviaría: faltan datos para {{ previewUnresolved().join(', ') }}.</div> }
+            </div>
+          }
+        </div>
+      </div>
+      <div modalNotice aria-live="polite">
+        @if (submitted() && problem(); as p) { <div class="alert warn" role="alert">{{ p }}</div> }
+        @if (error(); as e) { <app-modal-error title="No se pudo guardar la plantilla" [text]="e" [retryable]="true" (retry)="save()" /> }
+      </div>
+      <div modalFooter class="form-actions"><button type="button" class="btn" [disabled]="saving()" (click)="m.requestClose()">Cancelar</button> <button type="submit" class="btn primary" [appBusy]="saving()" busyLabel="Guardando…">Guardar plantilla</button></div>
+      </app-modal>
+    </form>
+    @if (shared(); as u) {
+      <app-modal #sm [alert]="true" size="sm" title="Plantilla compartida" [busy]="saving()" (closed)="shared.set(null)">
+        <p><strong>Esta plantilla la usan {{ u.length }} horarios:</strong> {{ usageTxt(u) }}.</p>
+        <p class="muted">Si la cambias, todos esos horarios enviarán el texto nuevo.</p>
+        <div modalFooter class="form-actions"><button type="button" class="btn" (click)="sm.requestClose()">Cancelar</button>
+          <button type="button" class="btn primary" (click)="confirmShared()" [appBusy]="saving()" busyLabel="Guardando…">Guardar para todos</button></div>
+      </app-modal>
+    }
+  }
+
+  @if (!embedded()) {
+  @if (list.error(); as e) { <app-error-state [message]="e" (retry)="list.reload()" /> }
+  @if (list.loading() && !list.data().length) { <app-loading variant="table" /> }
+  @else if (!list.error() && !list.data().length) { <app-empty-state icon="chat" title="Aún no hay plantillas" hint="Crea una y asígnala a un horario." /> }
+  @else {
+    <ul class="cards tpl-grid" aria-label="Plantillas">
+      @for (t of list.data(); track t.id) {
+        <li class="card">
+          <div class="row"><strong>{{ t.name }}</strong></div>
+          @if (surname(t.body)) { <div class="alert warn" role="alert"><strong>Esta plantilla usa {{ '{{apellido}}' }}, que ya no existe.</strong> No se podrá enviar hasta que la corrijas: reemplaza el nombre y el apellido por {{ '{{nombre_completo}}' }}.</div> }
+          <p class="body-text">{{ t.body }}</p>
+          @if (perms.canOperate()) {
+          <div class="actions">
+            <app-icon-button icon="pencil" label="Editar plantilla" [labelOnMobile]="true" (click)="edit(t)" />
+            @if (confirmDelete() !== t.id) { <app-icon-button icon="trash" label="Eliminar plantilla" tone="danger" [labelOnMobile]="true" (click)="confirmDelete.set(t.id)" /> }
+            @else { <span>¿Eliminar «{{ t.name }}»?</span> <button type="button" class="btn danger" (click)="remove(t)" [appBusy]="deleting()" busyLabel="Eliminando…">Sí, eliminar</button> <button type="button" class="btn" (click)="confirmDelete.set(null)">Cancelar</button> }
+          </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+  }
+</div>

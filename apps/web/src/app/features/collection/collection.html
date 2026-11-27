@@ -1,0 +1,227 @@
+<div class="page cob">
+  <div class="cob-top">
+    <div class="wk-week" role="group" aria-label="Semana">
+      <button type="button" class="btn sm icon" (click)="move(-1)" aria-label="Semana anterior"><app-icon name="chevronr" class="flip" /></button>
+      <strong class="wk-range" aria-live="polite">{{ range() }}</strong>
+      <button type="button" class="btn sm icon" (click)="move(1)" aria-label="Semana siguiente"><app-icon name="chevronr" /></button>
+      <button type="button" class="btn sm" [disabled]="thisWeek()" (click)="today()">Hoy</button>
+    </div>
+    <span class="grow"></span>
+    <a class="btn sm" routerLink="/settings/data">Importar Excel</a>
+  </div>
+
+  @if (lastSync.loading()) {
+    <!-- Mismo alto que el aviso definitivo: nada se desplaza al llegar. -->
+    <div class="alert info" aria-hidden="true">Comprobando la última importación…</div>
+  } @else {
+    <div class="alert" [class.warn]="syncStale()" [class.info]="!syncStale()" role="status">
+      @if (lastSync.data(); as l) { Datos de la última importación: <strong>{{ l.fileName }}</strong> · {{ when(l.appliedAt) }}.@if (syncStale()) { <strong> No es de hoy: sube el Excel actualizado antes de enviar.</strong> } }
+      @else { Aún no hay ninguna importación exitosa. <a routerLink="/settings/data">Importa el Excel</a> para poder enviar mensajes. }
+    </div>
+  }
+
+  <dl class="wk-totals" aria-label="Totales">
+    <div><dt>Unidades con operario</dt><dd>{{ totals().units }}</dd></div>
+    <div><dt>Con saldo pendiente</dt><dd>{{ totals().debtors }}</dd></div>
+    <div><dt>Saldo total (Excel)</dt><dd class="money" [class.pending]="totals().pending > 0">{{ usd(totals().pending) }}</dd></div>
+    <div><dt>Pagado en la semana</dt><dd class="money">{{ usd(totals().paid) }}</dd></div>
+  </dl>
+
+  @if (thisWeek()) { <app-former-debts /> }
+
+  @if (thisWeek() && perms.canOperate() && (failedGroups().length || unconfirmed().length)) {
+    <div class="alert warn cob-retry" role="status">
+      @for (g of failedGroups(); track g.templateId) {
+        <p><span>{{ g.ids.length }} {{ g.ids.length === 1 ? 'mensaje de «' + g.name + '» no salió' : 'mensajes de «' + g.name + '» no salieron' }}.</span>
+          <button type="button" class="btn sm primary" (click)="retry(g)">Reintentar {{ g.ids.length }}</button></p>
+      }
+      @if (unconfirmed().length) {
+        <p><span>{{ unconfirmed().length }} {{ unconfirmed().length === 1 ? 'mensaje sin confirmar' : 'mensajes sin confirmar' }}: mira algún chat antes de decidir.</span>
+          @if (resolveAsk() === null) {
+            <button type="button" class="btn sm" (click)="resolveAsk.set(false)">No llegó</button>
+            <button type="button" class="btn sm" (click)="resolveAsk.set(true)">Sí llegó</button>
+          } @else {
+            <button type="button" class="btn sm primary" [disabled]="resolving()" (click)="resolve(resolveAsk()!)">{{ resolveAsk() ? 'Sí, marcar como enviados' : 'Sí, no llegó: permitir reintentar' }}</button>
+            <button type="button" class="btn sm" [disabled]="resolving()" (click)="resolveAsk.set(null)">Volver</button>
+          }</p>
+      }
+      @if (resolveError(); as e) { <p>{{ e }}</p> }
+    </div>
+  }
+
+  <div class="filterbar">
+    <div class="field"><label for="cob-q">Buscar conductor</label>
+      <input id="cob-q" type="search" placeholder="Nombre, unidad, operario o WhatsApp" autocomplete="off" [ngModel]="query()" (ngModelChange)="query.set($event)" /></div>
+    <div class="field"><label for="cob-tpl-bar">Plantilla</label>
+      <select id="cob-tpl-bar" [ngModel]="templateId()" (ngModelChange)="setTemplate($event)">
+        <option value="">Sin plantilla elegida</option>
+        @for (t of templates.data(); track t.id) { <option [value]="t.id" [disabled]="surname(t.body)">{{ t.name }}{{ surname(t.body) ? ' — usa {{apellido}}: corrígela en Plantillas' : '' }}</option> }
+      </select></div>
+    <button type="button" class="btn" [disabled]="!perms.canOperate()" (click)="selectPending()">{{ pendingLabel() }}</button>
+  </div>
+  <div class="filter-group"><span class="group-label" id="g-msg">Mensajes de hoy</span>
+    <div class="chips sm" role="group" aria-labelledby="g-msg">
+      @for (f of msgFilters; track f.value) { <button type="button" class="chip" [attr.aria-pressed]="msgFilter() === f.value" [disabled]="f.needsTemplate && !templateId()" [attr.title]="f.needsTemplate && !templateId() ? 'Elige una plantilla' : null" (click)="msgFilter.set(f.value)">{{ f.label }}</button> }
+    </div></div>
+  <div class="filter-group"><span class="group-label" id="g-seg">Cobranza</span>
+    <div class="chips sm" role="group" aria-labelledby="g-seg">
+      @for (f of segments; track f.value) { <button type="button" class="chip" [attr.aria-pressed]="segment() === f.value" (click)="segment.set(f.value)">{{ f.label }}</button> }
+    </div></div>
+
+  <div aria-live="polite">@if (flash(); as m) { <div class="alert ok" role="status">{{ m }}</div> } @if (commissionError(); as e) { <div class="alert bad" role="alert">{{ e }}</div> }</div>
+
+  @if (hasExcelSelection()) { <div class="cob-restore"><button type="button" class="btn sm" (click)="restoreSelection()">Restaurar selección del Excel</button></div> }
+
+  @if (selected().size > 0) {
+    <div class="cob-bar" role="region" aria-label="Selección">
+      <strong>{{ selected().size }} seleccionado{{ selected().size === 1 ? '' : 's' }} de {{ active().length }}</strong>
+      @if (dupSelected() > 0) { <span class="chip-s attn">{{ dupSelected() }} ya {{ dupSelected() === 1 ? 'recibió' : 'recibieron' }} hoy «{{ templateName() }}»: se excluirán por defecto</span> }
+      <span class="grow"></span>
+      <button type="button" class="btn sm" (click)="clear()">Quitar selección</button>
+      <button type="button" class="btn sm primary" [disabled]="!perms.canOperate()" (click)="openSend()">Enviar mensaje…</button>
+    </div>
+  }
+
+  @if (board.error(); as e) { <app-error-state [message]="e" (retry)="board.reload()" /> }
+  @if (board.loading() && !board.data().length) { <app-loading variant="table" [rows]="6" label="Cargando la cobranza…" /> }
+  @else if (!board.error() && !board.data().length) { <app-empty-state icon="wallet" title="Aún no hay unidades" hint="Sube el Excel de cobranza en Importar para cargar las unidades y los operarios."><a class="btn sm primary" routerLink="/settings/data">Importar Excel</a></app-empty-state> }
+  @else if (!rows().length && !board.error()) { <app-empty-state title="Sin resultados" hint="Ninguna unidad coincide con la búsqueda o el filtro." /> }
+  @else if (bp.isMobile()) {
+    <ul class="wk-cards" aria-label="Unidades">
+      @for (r of rows(); track r.assignmentId) {
+        <li class="card wk-card">
+          <div class="wk-card-head">
+            <input type="checkbox" class="cob-check" [checked]="isSel(r)" [disabled]="!selectable(r)" (change)="toggle(r, $any($event.target).checked)" [attr.aria-label]="'Seleccionar ' + r.unitCode + ' ' + r.fullName" />
+            <div class="wk-card-id"><strong class="wk-name">{{ r.fullName }}</strong><span class="muted">Unidad {{ r.unitCode }} · Operario {{ r.operatorCode }}@if (r.ended) { · <span class="chip-s attn">Desvinculado</span> }</span></div>
+          </div>
+          <dl class="wk-kpis">
+            <div><dt>WhatsApp</dt><dd>@if (r.phone) { {{ fmt(r.phone) }} } @else { <span class="chip-s attn">Sin WhatsApp</span> }</dd></div>
+            <div><dt>Cuota diaria</dt><dd class="money">{{ usd(r.dailyRateCents) }}</dd></div>
+            <div><dt>Pagado semana</dt><dd class="money">{{ usd(r.paidWeekCents) }}</dd></div>
+            <div><dt>Saldo (Excel)</dt><dd class="money" [class.pending]="r.pendingCents > 0">@if (r.saldoMissing) { <span class="muted">Sin saldo</span> } @else { {{ usd(r.pendingCents) }} }</dd></div>
+            <div><dt>Comisión +$1</dt><dd><label class="wk-cm"><input type="checkbox" class="cm-check" [checked]="r.collectCommission" [disabled]="!perms.canOperate() || r.ended || commissionBusy() === r.assignmentId" (change)="toggleCommission(r, $any($event.target).checked)" [attr.aria-label]="'Cobrar comisión de $1.00 a ' + r.unitCode + ' ' + r.fullName" /> <span>{{ r.collectCommission ? 'Se cobra' : 'No se cobra' }}</span></label></dd></div>
+            <div><dt>Mensajes de hoy</dt><dd>@if (r.messagesToday.length) { <ng-container *ngTemplateOutlet="todayList; context: { $implicit: r }" /> } @else { <span class="muted">Ninguno</span> }</dd></div>
+          </dl>
+          <button type="button" class="btn sm" (click)="toggleOpen(r)" [attr.aria-expanded]="isOpen(r)"><app-icon [name]="isOpen(r) ? 'chevron' : 'chevronr'" /> {{ isOpen(r) ? 'Ocultar' : 'Ver' }} los días de la semana</button>
+          @if (isOpen(r)) { <ng-container *ngTemplateOutlet="weekDays; context: { $implicit: r }" /> }
+        </li>
+      }
+    </ul>
+  } @else {
+    <div class="table-wrap flat">
+      <table class="wk-table" aria-label="Cobranza por unidad">
+        <thead><tr>
+          <th scope="col" class="c-ex"><span class="sr-only">Detalle semanal</span></th><th scope="col" class="c-tg"><input type="checkbox" class="cob-check" [checked]="allShown()" (change)="toggleAll($any($event.target).checked)" aria-label="Seleccionar todos los que tienen WhatsApp" /></th>
+          <th scope="col">Unidad</th><th scope="col">Operario</th><th scope="col">Nombre</th><th scope="col">WhatsApp</th>
+          <th scope="col" class="num">Cuota diaria</th><th scope="col" class="num">Pagado semana</th><th scope="col" class="num" title="Último saldo válido importado del Excel">Saldo (Excel)</th><th scope="col" class="c-cm" title="Yappy / Punto Pago cobran $1.00: con el check, el importe del mensaje suma $1.00">Comisión +$1</th><th scope="col">Mensajes de hoy</th>
+        </tr></thead>
+        <tbody>
+          @for (r of rows(); track r.assignmentId) {
+            <tr class="wk-row" [class.open]="isSel(r)">
+              <td class="c-ex"><button type="button" class="btn sm icon" (click)="toggleOpen(r)" [attr.aria-expanded]="isOpen(r)" [attr.aria-label]="(isOpen(r) ? 'Ocultar' : 'Ver') + ' los días de la semana de ' + r.unitCode"><app-icon [name]="isOpen(r) ? 'chevron' : 'chevronr'" /></button></td>
+              <td class="c-tg"><input type="checkbox" class="cob-check" [checked]="isSel(r)" [disabled]="!selectable(r)" [attr.title]="r.ended ? 'Unidad desvinculada: sin mensajes' : r.phone ? null : 'Sin WhatsApp: no se puede enviar'" (change)="toggle(r, $any($event.target).checked)" [attr.aria-label]="'Seleccionar ' + r.unitCode + ' ' + r.fullName" /></td>
+              <td><strong>{{ r.unitCode }}</strong>@if (r.ended) { <span class="chip-s attn">Desvinculado</span> }</td><td>{{ r.operatorCode }}</td><td class="wk-name">{{ r.fullName }}</td>
+              <td class="c-ph">@if (r.phone) { {{ fmt(r.phone) }} } @else { <span class="chip-s attn">Sin WhatsApp</span> }</td>
+              <td class="num">{{ usd(r.dailyRateCents) }}</td><td class="num">{{ usd(r.paidWeekCents) }}</td>
+              <td class="num" [class.pending]="r.pendingCents > 0">@if (r.saldoMissing) { <span class="muted" title="El Excel aún no trae el saldo de esta unidad">Sin saldo</span> } @else { {{ usd(r.pendingCents) }} }</td>
+              <td class="c-cm"><input type="checkbox" class="cm-check" [checked]="r.collectCommission" [disabled]="!perms.canOperate() || r.ended || commissionBusy() === r.assignmentId" (change)="toggleCommission(r, $any($event.target).checked)" [attr.aria-label]="'Cobrar comisión de $1.00 a ' + r.unitCode + ' ' + r.fullName" /></td>
+              <td>@if (r.messagesToday.length) { <ng-container *ngTemplateOutlet="todayList; context: { $implicit: r }" /> } @else { <span class="muted">—</span> }</td>
+            </tr>
+            @if (isOpen(r)) { <tr class="wd-row"><td colspan="11"><ng-container *ngTemplateOutlet="weekDays; context: { $implicit: r }" /></td></tr> }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (sendOpen()) {
+    <app-modal #m title="Enviar mensaje por WhatsApp" size="lg" [busy]="sending()" [trackDirty]="false" (closed)="closeSend()">
+      @if (!result()) {
+        <div class="field"><label for="cob-tpl">Plantilla</label>
+          <select id="cob-tpl" [ngModel]="templateId()" (ngModelChange)="pick($event)" [disabled]="sending()">
+            <option value="" disabled>Elige una plantilla…</option>
+            @for (t of templates.data(); track t.id) { <option [value]="t.id" [disabled]="surname(t.body)">{{ t.name }}{{ surname(t.body) ? ' — usa {{apellido}}: corrígela en Plantillas' : '' }}</option> }
+          </select>
+          @if (!templates.data().length) { <small class="hint">Aún no hay plantillas. <a routerLink="/messages/templates">Crea una</a> primero.</small> }
+        </div>
+        @if (previewing()) { <app-loading variant="stats" label="Preparando los mensajes…" /> }
+        @if (preview(); as pv) {
+          @if (!pv.whatsappConnected) { <app-modal-error title="WhatsApp no está conectado" text="No se puede enviar. Conéctalo en Mensajería → Conexión." /> }
+          @if (pv.simulated) { <div class="alert info" role="status"><strong>Modo de pruebas:</strong> los mensajes se simulan; no salen por WhatsApp.</div> }
+          @if (!pv.lastSync) { <app-modal-error title="Sin importación del Excel" text="Aún no hay una importación exitosa: importa el archivo antes de enviar." /> }
+          @else { <p class="muted cob-sync">Datos de la importación <strong>{{ pv.lastSync.fileName }}</strong> del {{ when(pv.lastSync.appliedAt) }}.@if (syncStale()) { <strong class="pending"> No es de hoy.</strong> }</p> }
+          <dl class="cob-sum" aria-label="Resumen del envío">
+            <div><dt>Seleccionados</dt><dd>{{ plan().length }}</dd></div><div><dt>Se enviarán</dt><dd class="paid">{{ toSend().length }}</dd></div><div><dt>Excluidos</dt><dd [class.pending]="excluded().length > 0">{{ excluded().length }}</dd></div>
+          </dl>
+          @if (dupCount() > 0) {
+            <div class="alert warn" role="status">{{ dupCount() }} {{ dupCount() === 1 ? 'operario ya recibió' : 'operarios ya recibieron' }} hoy la plantilla «{{ templateName() }}».
+              <label class="check"><input type="checkbox" [ngModel]="repeat()" (ngModelChange)="repeat.set($event)" /> Enviarla de nuevo de todos modos</label></div>
+          }
+          @if (sharedOperators().length) { <div class="alert warn" role="status">Estos operarios tienen varias unidades en la selección y recibirán un mensaje por cada una, con los importes de esa unidad:
+            <ul class="plain">@for (o of sharedOperators(); track o.operatorCode) { <li><strong>{{ o.operatorCode }} · {{ o.fullName }}</strong>: {{ o.units.join(', ') }}</li> }</ul>
+            Si alguna unidad ya no es suya, desmárcala aquí y desvincúlalo en la ficha de esa unidad.</div> }
+          <ul class="plain cob-prev" aria-label="Mensajes">
+            @for (x of plan(); track x.i.assignmentId) {
+              <li [class.blocked]="!!x.reason">
+                <div class="row">
+                  <label class="check"><input type="checkbox" class="cob-check" [checked]="!x.reason" [disabled]="!x.canToggle" (change)="include(x.i.assignmentId, $any($event.target).checked)" [attr.aria-label]="'Incluir ' + x.i.unitCode" />
+                    <strong>{{ x.i.unitCode }} · {{ x.i.fullName }}</strong></label>
+                  <span class="muted">Operario {{ x.i.operatorCode }}{{ x.i.phone ? ' · ' + fmt(x.i.phone) : '' }}</span>
+                </div>
+                @if (x.reason) { <span class="chip-s attn">Excluido: {{ reasonText(x.reason) }}@if (x.reason === 'template_unresolved' && x.i.unresolved.length) { ({{ x.i.unresolved.join(', ') }}) }</span> }
+                @if (x.i.text && (!x.reason || x.reason === 'manual' || x.reason === 'already_sent_today')) { <pre class="cob-msg">{{ x.i.text }}</pre> }
+              </li>
+            }
+          </ul>
+        }
+        @if (modalError(); as e) { <app-modal-error title="No se pudo preparar o enviar" [text]="e" /> }
+      } @else {
+        <div class="alert ok" role="status"><strong>{{ result()!.sent }} mensaje(s) en cola.</strong> Se envían uno a uno por WhatsApp; el estado aparece en la tabla y en Mensajería → Historial. <a class="btn sm" routerLink="/messages/history" [queryParams]="{ batch: sentBatch() }">Ir al historial del lote</a>@if (result()!.failed) { {{ result()!.failed }} no se pudieron enviar. }</div>
+        <ul class="plain cob-res">@for (x of result()!.results; track x.assignmentId) { <li><span class="chip-s" [class.paid]="x.ok" [class.attn]="!x.ok">{{ resultText(x.assignmentId) }}</span> {{ nameOf(x.assignmentId) }}</li> }</ul>
+      }
+      <div modalFooter class="form-actions">
+        @if (!result()) {
+          <button type="button" class="btn" [disabled]="sending()" (click)="m.requestClose()">Cancelar</button>
+          <button type="button" class="btn primary" [disabled]="!canConfirm()" (click)="confirmSend()" [appBusy]="sending()" busyLabel="Enviando…">Enviar {{ toSend().length }} mensaje{{ toSend().length === 1 ? '' : 's' }}</button>
+        } @else { <button type="button" class="btn primary" (click)="m.requestClose()">Listo</button> }
+      </div>
+    </app-modal>
+  }
+
+  <ng-template #weekDays let-r>
+    <div class="wd-box">
+      <table class="wd-tbl" [attr.aria-label]="'Detalle de la semana de ' + r.fullName">
+        <thead><tr><td class="wd-lbl"></td>@for (d of r.days; track d.date; let i = $index) { <th scope="col" class="num">{{ dayNames[i] }} <span class="wd-date">{{ shortDate(d.date) }}</span></th> }</tr></thead>
+        <tbody>
+          <tr><th scope="row">Cuota</th>@for (d of r.days; track d.date) { <td class="num">{{ d.dueCents || d.paidCents ? usd(d.dueCents) : '—' }}</td> }</tr>
+          <tr><th scope="row">Pagado</th>@for (d of r.days; track d.date) { <td class="num">{{ d.dueCents || d.paidCents ? usd(d.paidCents) : '—' }}</td> }</tr>
+          <tr><th scope="row">Diferencia</th>@for (d of r.days; track d.date) { <td class="num">@if (d.dueCents === 0 && d.paidCents === 0) { — } @else if (diff(d) > 0) { <span class="wd-d attn">Faltan {{ usd(diff(d)) }}</span> } @else if (diff(d) < 0) { <span class="wd-d credit">A favor {{ usd(-diff(d)) }}</span> } @else { <span class="wd-d paid">Al día</span> }</td> }</tr>
+        </tbody>
+      </table>
+      <p class="wd-line">Saldo anterior: <strong>{{ usd(r.pendingCents) }}</strong>@if (r.totalCents !== null) { · Debe hoy: <strong>{{ usd(r.totalCents > 0 ? r.totalCents : 0) }}</strong>@if (r.commissionCents > 0) { <span class="muted">(incluye comisión {{ usd(r.commissionCents) }})</span> } } · Solo informativo.</p>
+    </div>
+  </ng-template>
+
+  <ng-template #todayList let-r>
+    <div class="cob-today">
+      <div class="muted">{{ r.messagesToday.length }} {{ r.messagesToday.length === 1 ? 'mensaje' : 'mensajes' }} hoy</div>
+      @for (m of r.messagesToday; track m.id) {
+        <div class="cob-today-row">«{{ m.template }}» · <span class="nowrap">{{ hour(m.at) }}</span> <span class="chip-s" [class.paid]="okStatus(m.status)" [class.attn]="badStatus(m.status)">{{ statusLabel(m.status) }}</span></div>
+      }
+      <button type="button" class="link" (click)="viewing.set(r)">Ver mensajes</button>
+    </div>
+  </ng-template>
+
+  @if (viewing(); as v) {
+    <app-modal #vm title="Mensajes de hoy" size="md" (closed)="viewing.set(null)">
+      <p class="muted">{{ v.unitCode }} · {{ v.fullName }} · {{ v.phone ? fmt(v.phone) : '' }}</p>
+      <ul class="plain cob-prev" aria-label="Mensajes enviados hoy">
+        @for (m of v.messagesToday; track m.id) {
+          <li><div class="row"><strong>«{{ m.template }}»</strong><span class="muted">{{ hour(m.at) }}</span><span class="chip-s" [class.paid]="okStatus(m.status)" [class.attn]="badStatus(m.status)">{{ statusLabel(m.status) }}</span></div>
+            <pre class="cob-msg">{{ m.body }}</pre>@if (m.error) { <div class="muted">Motivo: {{ m.error }}</div> }</li>
+        }
+      </ul>
+      <div modalFooter class="form-actions"><button type="button" class="btn primary" (click)="vm.requestClose()">Cerrar</button></div>
+    </app-modal>
+  }
+</div>

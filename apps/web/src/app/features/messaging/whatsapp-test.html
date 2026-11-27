@@ -1,0 +1,113 @@
+<div class="page wa-page">
+  <p class="wa-back"><a routerLink="/messages/whatsapp">← WhatsApp</a></p>
+  <section class="panel wa-card" aria-labelledby="wt-title">
+    <h2 id="wt-title">Enviar mensaje de prueba</h2>
+    <p class="muted wt-note">Un solo destinatario, nunca un conductor. Por defecto es <strong>simulado</strong>: no se envía nada. Esta prueba <strong>no registra ningún pago</strong>.</p>
+
+    @if (!gate().operational && gate().message) { <p class="wa-gate" role="status" id="wt-off"><app-icon name="info" /><span>{{ gate().message }}. <a routerLink="/messages/whatsapp">Ir a Conexión</a></span></p> }
+    <fieldset class="wt-fs" [disabled]="!gate().operational" [attr.aria-describedby]="gate().operational ? null : 'wt-off'">
+    <form (submit)="$event.preventDefault(); doPreview()" class="wt-form">
+      <div class="field"><label for="wt-phone">Número de destino <span class="muted">(con código de país)</span></label>
+        <input id="wt-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="+507 6000 0000" [value]="phone()" (input)="setPhone($any($event.target).value)" /></div>
+      <div class="field"><label for="wt-body">Mensaje <span class="muted wt-count" [class.pending]="body().length > max">{{ body().length }}/{{ max }}</span></label>
+        <textarea id="wt-body" [rows]="3" [attr.maxlength]="max" [value]="body()" (input)="setBody($any($event.target).value)"></textarea></div>
+      <div class="wt-row">
+        <button type="submit" class="btn primary" [disabled]="busy() || !phone().trim() || !body().trim()" [appBusy]="busy()" busyLabel="Preparando vista previa…">Vista previa</button>
+      </div>
+    </form>
+
+    @if (error(); as e) { <p class="wa-note bad" role="alert"><app-err [text]="e" /></p> }
+    @if (sent(); as s) { <p class="wa-note ok" role="status">{{ s }}</p> }
+
+    @if (preview(); as p) {
+      <div class="wt-box" aria-label="Vista previa">
+        <h3>Vista previa</h3>
+        @if (p.invalidPhone) { <p class="wa-note bad" role="alert">El número no es válido. Escríbelo con código de país, por ejemplo +507 6000 0000.</p> }
+        @if (p.recipientIsADriver) { <p class="wa-note bad" role="alert">Ese número pertenece a un conductor: los mensajes de prueba nunca se envían a conductores. Envío bloqueado.</p> }
+        @if (!fresh()) { <p class="wa-note warn" role="status">Cambiaste el número o el texto: vuelve a pulsar «Vista previa».</p> }
+        <dl class="wt-kv">
+          <div><dt>Destinatario</dt><dd>{{ p.recipient ? show(p.recipient) : '—' }}</dd></div>
+          <div><dt>Número emisor</dt><dd>{{ p.sender ? show(p.sender) : 'WhatsApp no conectado' }}</dd></div>
+          <div><dt>Modo</dt><dd>{{ mode() === 'real' ? 'Envío real' : 'Simulado' }}</dd></div>
+        </dl>
+        <pre class="preview-text">{{ p.body }}</pre>
+
+        @if (!blocked()) {
+          @if (realAllowed()) {
+            <fieldset class="wt-mode"><legend>Envío</legend>
+              <label class="check"><input type="radio" name="wt-mode" value="simulated" [checked]="mode() === 'simulated'" (change)="setMode('simulated')" /> Simulado (no envía nada)</label>
+              <label class="check"><input type="radio" name="wt-mode" value="real" [disabled]="realBlocked()" [checked]="mode() === 'real'" (change)="setMode('real')" /> Envío real</label>
+              @if (realBlocked()) { <small class="muted" id="wt-real-blocked">Hay un envío real sin confirmar; revísalo antes de enviar otro.</small> }
+            </fieldset>
+          }
+          @if (mode() === 'real') {
+            <div class="check wt-own"><input id="wt-own" type="checkbox" [checked]="own()" (change)="own.set($any($event.target).checked)" />
+              <label for="wt-own">Confirmo que este número es mío o autorizó recibir la prueba</label></div>
+          }
+          @if (finalStep()) {
+            <div class="wa-note warn" role="alertdialog" aria-label="Confirmación final">
+              <p><strong>Se enviará un mensaje real. Esta acción no se puede deshacer.</strong></p>
+              <div class="wt-row"><button type="button" class="btn" (click)="finalStep.set(false)">Volver</button>
+                <button type="button" class="btn danger" [disabled]="sending()" (click)="doSend()" [appBusy]="sending()" busyLabel="Enviando…">Confirmar envío de UN mensaje a {{ masked() }}</button></div>
+            </div>
+          } @else {
+            <div class="wt-row"><span></span>
+              <button type="button" class="btn primary" [disabled]="!canSend()" [appBusy]="sending()" busyLabel="Enviando…" (click)="send()">{{ mode() === 'real' ? 'Continuar' : 'Enviar mensaje de prueba' }}</button></div>
+          }
+        }
+      </div>
+    }
+    </fieldset>
+  </section>
+
+  <section class="panel wa-card" aria-labelledby="wt-hist">
+    <h2 id="wt-hist">Mensajes de prueba</h2>
+    @if (historyError(); as e) { <p class="wa-note bad" role="alert"><app-err [text]="e" /></p> }
+    @if (!historyLoaded()) { <app-loading [rows]="2" label="Cargando los mensajes de prueba…" /> }
+    @else if (history().length === 0) { <p class="muted">Aún no hay mensajes de prueba.</p> }
+    @else {
+      @for (g of [{ k: 'real', t: 'Reales', list: real() }, { k: 'sim', t: 'Simulados (no se envió nada)', list: simulated() }]; track g.k) {
+        <h3 class="wt-group" [id]="'wt-g-' + g.k">{{ g.t }} <span class="muted">({{ g.list.length }})</span></h3>
+        @if (!g.list.length) { <p class="muted wt-none">Ninguno.</p> }
+        <ul class="wt-list" [attr.aria-labelledby]="'wt-g-' + g.k">
+          @for (m of g.list; track m.id) {
+            <li>
+              <div class="wt-li-head"><span class="chip-s" [class]="'chip-s ' + tone(m.status)">{{ labels[m.status] }}</span>
+                <strong>{{ show(m.recipientPhone) }}</strong>
+                @if (m.kind === 'payment_receipt_preview') { <span class="muted">Comprobante</span> }
+                @if (m.senderPhone) { <span class="muted">desde {{ show(m.senderPhone) }}</span> }
+                @if (m.providerMessageId) { <span class="muted" title="Id del proveedor">id {{ m.providerMessageId }}</span> }
+                <span class="muted wt-when">{{ time(m.createdAt) }}</span>
+                <app-icon-button icon="eye" label="Ver detalle del mensaje" [expanded]="detailId() === m.id" [controls]="'wt-d-' + m.id" (click)="toggleDetail(m)" />
+                @if (m.status === 'prepared') { <button type="button" class="btn sm" (click)="cancel(m)">Cancelar</button> }</div>
+              @if (m.status === 'unconfirmed') {
+                <p class="wa-line warn" role="status"><span>WhatsApp pudo haber aceptado este mensaje. Revisa el chat del destinatario antes de reintentar.</span>
+                  <button type="button" class="btn sm" (click)="askResolve(m, true)">Sí llegó</button><button type="button" class="btn sm" (click)="askResolve(m, false)">No llegó</button></p>
+                @if (resolving(); as r) { @if (r.id === m.id) {
+                  <div class="wt-box" role="alertdialog" [attr.aria-label]="'Confirmar resultado'">
+                    <p><strong>{{ r.arrived ? 'Marcar como enviado (sí llegó)' : 'Marcar como fallido (no llegó)' }}.</strong> No se puede deshacer.</p>
+                    <div class="field"><label [for]="'wt-n-' + m.id">Nota (opcional)</label><input [id]="'wt-n-' + m.id" maxlength="300" autocomplete="off" [value]="resolveNote()" (input)="resolveNote.set($any($event.target).value)" /></div>
+                    <div class="wt-row"><button type="button" class="btn sm" (click)="resolving.set(null)">Volver</button>
+                      <button type="button" class="btn sm primary" [disabled]="resolveBusy()" (click)="confirmResolve()" [appBusy]="resolveBusy()" busyLabel="Guardando…">Confirmar</button></div>
+                  </div> } }
+              }
+              @if (detailId() === m.id) {
+                <div class="wt-box" [id]="'wt-d-' + m.id" role="region" [attr.aria-label]="'Detalle del mensaje'">
+                  <dl class="wt-kv">
+                    <div><dt>Operación</dt><dd>{{ m.id }}</dd></div><div><dt>Modo</dt><dd>{{ m.requestedMode === 'real' ? 'Real' : 'Simulado' }}</dd></div>
+                    <div><dt>Autorizó (usuario)</dt><dd>{{ m.authorizedBy ?? '—' }}</dd></div><div><dt>Declaración del destinatario</dt><dd>{{ m.recipientAuthorization ?? '—' }}</dd></div>
+                    <div><dt>Creado</dt><dd>{{ time(m.createdAt) }}</dd></div><div><dt>Reclamado</dt><dd>{{ m.claimedAt ? time(m.claimedAt) : '—' }}</dd></div>
+                    <div><dt>Procesado</dt><dd>{{ m.processedAt ? time(m.processedAt) : '—' }}</dd></div>
+                  </dl>
+                  @if (m.error || m.errorDetail) { <details class="err-detail"><summary>Error técnico</summary>@if (m.error) { <pre class="wt-pre">{{ m.error }}</pre> }@if (m.errorDetail) { <pre class="wt-pre">{{ m.errorDetail }}</pre> }</details> }
+                  @if (m.resolvedAt) { <p class="muted">Resuelto {{ time(m.resolvedAt) }}@if (m.resolvedBy) { por {{ m.resolvedBy }} }@if (m.resolutionNote) { · «{{ m.resolutionNote }}» }</p> }
+                  <p class="wt-body">{{ m.body }}</p>
+                  @if (m.status === 'sent') { <small class="muted">El proveedor lo aceptó; aún no hay confirmación de entrega.</small> }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>

@@ -1,0 +1,21 @@
+{
+  "name": "@vip/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de las migraciones de Supabase contra un PostgreSQL real y aislado (nunca el Supabase compartido).",
+  "exports": {
+    "./testing": "./test/harness.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

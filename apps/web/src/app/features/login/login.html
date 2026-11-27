@@ -1,0 +1,31 @@
+<div class="auth-frame">
+  <div class="auth-card">
+    <div class="auth-brand"><span class="mark vip" aria-hidden="true">VIP</span><div><strong>VIP</strong><span>Cobranza y operación</span></div></div>
+    <h1>Iniciar sesión</h1>
+    <p class="sub">Accede con tu cuenta autorizada.</p>
+    @if (status() === 'unconfigured') {
+      <div class="alert warn" role="alert">
+        La aplicación aún no está configurada. Avisa al administrador técnico: todavía no es posible iniciar sesión.
+      </div>
+    }
+    @if (notice(); as n) { <div class="alert error" role="alert"><app-err [text]="n" /></div> }
+    <form (ngSubmit)="submit()" #f="ngForm" novalidate>
+      <div class="field">
+        <label for="email">Correo electrónico</label>
+        <input id="email" name="email" type="email" autocomplete="username" inputmode="email" required [(ngModel)]="email" #em="ngModel"
+               [attr.aria-invalid]="em.touched && em.invalid ? 'true' : null" aria-describedby="email-err" />
+        <small id="email-err" class="pending" aria-live="polite">@if (em.touched && em.invalid) { Escribe un correo válido, por ejemplo nombre&#64;dominio.com. }</small>
+      </div>
+      <div class="field">
+        <label for="password">Contraseña</label>
+        <app-password-field inputId="password" name="password" autocomplete="current-password" [required]="true" [(ngModel)]="password" #pw="ngModel"
+                            [invalid]="!!(pw.touched && pw.invalid)" describedBy="pw-err" />
+        <small id="pw-err" class="pending" aria-live="polite">@if (pw.touched && pw.invalid) { Escribe tu contraseña. }</small>
+      </div>
+      <div aria-live="polite">
+        @if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }
+      </div>
+      <button class="btn primary big" type="submit" [disabled]="busy() || status() === 'unconfigured' || f.invalid" [appBusy]="busy()" busyLabel="Entrando…">Entrar</button>
+    </form>
+  </div>
+</div>

@@ -1,0 +1,97 @@
+<div class="page">
+  @if (bundle.error(); as e) { <app-error-state [message]="e" (retry)="bundle.reload()" /> }
+  @else if (bundle.loading() && !driver()) { <app-loading variant="stats" label="Cargando la ficha…" /><app-loading variant="block" /> }
+  @else if (!driver()) { <app-empty-state title="Conductor no encontrado" hint="No existe o fue eliminado." /> }
+  @else if (driver(); as d) {
+    @if (editing()) {
+      <app-modal #em title="Editar conductor" size="lg" (closed)="editing.set(false)"><app-driver-form [driver]="d" (saved)="saved()" (cancelled)="em.requestClose()" /></app-modal>
+    } @else {
+      <section class="panel" aria-labelledby="dd-name">
+        <div class="row">
+          <h2 id="dd-name">{{ d.firstName }} {{ d.lastName }}</h2>
+          <span class="badge" [class.paid]="d.status === 'active'" [class.pending]="d.status === 'suspended'">{{ labels[d.status] }}</span>
+        </div>
+        <p class="muted">Operador {{ d.operatorCode }}@if (d.nationalId) { · Cédula {{ d.nationalId }} }</p>
+        <dl class="kv">
+          <dt>Teléfono</dt><dd>{{ d.phone ?? 'Sin registrar' }}</dd>
+          <dt>WhatsApp</dt><dd>{{ d.phoneE164 ?? 'Sin registrar' }}</dd>
+          <dt>Licencia</dt><dd>{{ d.licenseNumber ?? 'Sin registrar' }}@if (d.licenseExpiresOn) { · vence {{ dmy(d.licenseExpiresOn) }} }</dd>
+          @if (d.notes) { <dt>Notas</dt><dd>{{ d.notes }}</dd> }
+        </dl>
+        <div aria-live="polite">@if (error(); as e) { <div class="alert error" role="alert"><app-err [text]="e" /></div> }</div>
+        <div class="actions">
+          @if (perms.canOperate()) { <app-icon-button icon="pencil" label="Editar conductor" [labelOnMobile]="true" (click)="editing.set(true)" />
+            <app-manage-entity kind="drivers" [entityId]="d.id" [name]="d.firstName + ' ' + d.lastName" [archived]="d.status === 'inactive'" [labelOnMobile]="true" (changed)="saved()" (deleted)="goBack('/drivers')" /> }
+        </div>
+      </section>
+    }
+
+
+    <section class="panel" aria-labelledby="dd-asg">
+      <div class="row"><h2 id="dd-asg">Unidad asignada</h2>@if (perms.canOperate()) { <app-icon-button icon="truck" label="Gestionar asignaciones" [link]="['/drivers/assignments']" /> }</div>
+      @if (current(); as a) {
+        <p><strong>{{ a.unitCode }}</strong>@if (unit()?.plate) { · placa {{ unit()!.plate }} }@if (unit()?.make) { · {{ unit()!.make }} {{ unit()!.model }} }
+          · desde {{ dmy(a.validFrom) }} · tarifa diaria {{ a.dailyRateCents === null ? 'sin tarifa' : usd(a.dailyRateCents) }}</p>
+        @if (a.agreementNote) { <p class="muted">Acuerdo: {{ a.agreementNote }}</p> }
+        @if (money.data().saldo?.managed) {
+          <h3>Saldo pendiente</h3>
+          <div class="stats" aria-label="Saldo del Excel">
+            @if (money.data().saldo!.saldoCents === null) { <div class="card stat"><div class="label">Saldo (Excel)</div><div class="value">Sin saldo</div><div class="muted">El Excel aún no trae el saldo de esta unidad.</div></div> }
+            @else {
+              <div class="card stat"><div class="label">Saldo pendiente (Excel)</div><div class="value" [class.pending]="money.data().saldo!.saldoCents! > 0">{{ usd(max0(money.data().saldo!.saldoCents!)) }}</div></div>
+              <div class="card stat"><div class="label">Crédito a favor</div><div class="value credit">{{ usd(max0(-money.data().saldo!.saldoCents!)) }}</div></div>
+            }
+          </div>
+          <p class="muted">Es el último SALDO válido importado del Excel (semana del {{ money.data().saldo!.weekStart ? dmy(money.data().saldo!.weekStart!) : '—' }}). VIP no lo recalcula ni lo aumenta por el paso de los días.</p>
+        } @else {
+        @if (money.data().dues; as q) {
+          <h3>Lo que debe hoy</h3>
+          <div class="stats" aria-label="Desglose de la deuda">
+            <div class="card stat"><div class="label">Cuota de hoy</div><div class="value" [class.pending]="q.todayCents > 0">{{ usd(q.todayCents) }}</div></div>
+            <div class="card stat"><div class="label">Deuda anterior</div><div class="value" [class.pending]="q.overdueCents > 0">{{ usd(q.overdueCents) }}</div></div>
+            <div class="card stat"><div class="label">Deuda total</div><div class="value" [class.pending]="q.totalPendingCents > 0">{{ usd(q.totalPendingCents) }}</div></div>
+            <div class="card stat"><div class="label">Crédito a favor</div><div class="value credit">{{ usd(q.creditCents) }}</div></div>
+          </div>
+          <p class="muted">Los pagos se aplican primero a la deuda más antigua. Calculado por la base de datos.</p>
+        }
+        @if (money.data().position; as p) {
+          <div class="stats">
+            <div class="card stat"><div class="label">Pendiente</div><div class="value" [class.pending]="p.pendingCents > 0">{{ usd(p.pendingCents) }}</div></div>
+            <div class="card stat"><div class="label">Crédito a favor</div><div class="value credit">{{ usd(p.creditCents) }}</div></div>
+            <div class="card stat"><div class="label">Neto recibido (total)</div><div class="value">{{ usd(p.netCents) }}</div></div>
+          </div>
+        }
+        }
+      } @else {
+        <app-empty-state icon="truck" title="Sin unidad asignada" hint="Asígnala desde la pestaña Asignaciones de vehículos."><a class="btn sm" routerLink="/drivers/assignments">Ir a asignaciones</a></app-empty-state>
+      }
+    </section>
+
+    @if (current() ?? last(); as m) {
+      <section aria-labelledby="dd-mov">
+        <h2 id="dd-mov">Pagos y movimientos</h2>
+        @if (m.validTo) {
+          <p class="muted">De la unidad {{ m.unitCode }}, de la que se desvinculó el {{ dmy(m.validTo) }}.</p>
+          @if (money.data().saldo?.managed && money.data().saldo!.saldoCents !== null) {
+            <p>Saldo pendiente registrado: <strong>{{ usd(max0(money.data().saldo!.saldoCents!)) }}</strong>@if (money.data().saldo!.saldoCents! < 0) { · a favor {{ usd(-money.data().saldo!.saldoCents!) }} }</p>
+          }
+        }
+        @if (money.error(); as e) { <app-error-state [message]="e" (retry)="money.reload()" /> }
+        @else if (money.loading() && !money.data().movements.length) { <app-loading variant="table" [rows]="3" /> }
+        @else { <app-movement-list [movements]="money.data().movements"  /> }
+      </section>
+      @if (current(); as c) { <app-rate-history [assignmentId]="c.id" /> }
+    }
+
+    <section aria-labelledby="dd-hist"><h2 id="dd-hist">Historial de asignaciones</h2>
+      @if (!bundle.data().assignments.length) { <p class="muted">Sin asignaciones registradas.</p> }
+      @else {
+        <ul class="plain">@for (a of bundle.data().assignments; track a.id) {
+          <li>{{ a.unitCode }} · {{ dmy(a.validFrom) }} → {{ a.validTo ? dmy(a.validTo) : 'vigente' }}</li>
+        }</ul>
+      }
+    </section>
+
+
+  }
+</div>

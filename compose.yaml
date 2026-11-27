@@ -1,0 +1,50 @@
+# VIP en Docker. La base de datos sigue en Supabase.
+#   docker compose up -d --build      (una sola vez; después arranca solo al abrir Docker)
+#
+# El worker de WhatsApp debe correr en UN SOLO computador. Solo arranca donde el .env tenga:
+#   COMPOSE_PROFILES=whatsapp
+name: vip
+
+services:
+  web:
+    build: { context: ., target: web }
+    ports: ["127.0.0.1:8080:80"]      # solo este computador
+    depends_on: [api]
+    restart: unless-stopped
+
+  # Puerta de despliegue: si a la base le falta algo que esta versión espera, no se habilita la API.
+  schema-check:
+    build: { context: ., target: api }
+    image: vip-api
+    working_dir: /app
+    command: ["node", "scripts/db-check/cli.mjs"]
+    env_file: .env
+    restart: "no"
+
+  api:
+    image: vip-api
+    depends_on:
+      schema-check: { condition: service_completed_successfully }
+    build: { context: ., target: api }
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      BILLING_ENGINE: ${BILLING_ENGINE:-true}
+    restart: unless-stopped
+
+  worker:
+    profiles: [whatsapp]
+    build: { context: ., target: worker }
+    env_file: .env
+    environment:
+      OPENWA_SESSION_PATH: /data/openwa
+    volumes: ["openwa:/data/openwa"]
+    shm_size: 1gb                     # Chrome se cierra con la memoria compartida por defecto (64 MB)
+    init: true                        # recoge los procesos de Chrome que queden huérfanos
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  openwa:

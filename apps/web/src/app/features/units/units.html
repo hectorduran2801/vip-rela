@@ -1,0 +1,40 @@
+<div class="page">
+  <div class="filterbar">
+    <div class="field"><label for="q">Buscar unidad</label>
+      <input id="q" type="search" placeholder="Código, placa o conductor" autocomplete="off" [ngModel]="query()" (ngModelChange)="query.set($event)" /></div>
+    @if (perms.canOperate()) {
+      <a routerLink="/drivers/assignments" class="btn">Asignaciones</a>
+      <button type="button" class="btn primary" (click)="creating.set(true)">Nueva unidad</button>
+    }
+  </div>
+  <div class="filterbar">
+    <div class="field"><label for="cf">Acuerdo o condición especial</label>
+      <input id="cf" type="search" placeholder="El acuerdo contiene…" autocomplete="off" [ngModel]="agFilter()" (ngModelChange)="agFilter.set($event)" /></div>
+    <div class="check"><input id="cf-none" type="checkbox" [ngModel]="noAgreement()" (ngModelChange)="noAgreement.set($event)" /><label for="cf-none">Sin acuerdo</label></div>
+  </div>
+  @if (creating()) { <app-modal #cm title="Nueva unidad" size="lg" (closed)="creating.set(false)"><app-unit-form (saved)="saved()" (cancelled)="cm.requestClose()" /></app-modal> }
+  @if (list.error(); as e) { <app-error-state [message]="e" (retry)="list.reload()" /> }
+  @if (list.loading() && !list.data().units.length) { <app-loading variant="table" /> }
+  @else if (!list.error() && !list.data().units.length) { <app-empty-state icon="truck" title="Aún no hay unidades" hint="Crea la primera o impórtalos desde Configuración → Datos." /> }
+  @else if (!rows().length) { <app-empty-state title="Sin resultados" /> }
+  @else if (bp.isMobile()) {
+    <ul class="cards" aria-label="Unidades">
+      @for (r of rows(); track r.unit.id; let i = $index) {
+        <li class="card">
+          <div class="row"><h3><span class="muted row-n">{{ i + 1 }}.</span> <a [routerLink]="['/vehicles', r.unit.id]">{{ r.unit.code }}</a></h3><span class="badge" [class.paid]="r.unit.vehicleStatus === 'active'">{{ labels[r.unit.vehicleStatus] }}</span>@if (r.unit.agreement) { <span class="badge cond-badge ag-badge" [attr.title]="r.unit.agreement">{{ r.unit.agreement }}</span> }</div>
+          <div class="muted">{{ r.unit.plate ?? 'Sin placa' }}@if (r.unit.make) { · {{ r.unit.make }} {{ r.unit.model }} }</div>
+          <div>@if (r.driver) { {{ r.driver.driverName }} (op. {{ r.driver.operatorCode }}) } @else { <span class="chip-s paid">Disponible</span> Sin asignar }@if (r.driver?.dailyRateCents != null) { · {{ usd(r.driver!.dailyRateCents!) }}/día }</div>
+          <div class="action-bar start"><app-manage-entity kind="units" [entityId]="r.unit.id" [name]="r.unit.code" [archived]="r.unit.vehicleStatus === 'out_of_service'" [labelOnMobile]="true" (changed)="list.reload()" (deleted)="list.reload()" /></div>
+        </li>
+      }
+    </ul>
+  } @else {
+    <div class="table-wrap"><table aria-label="Unidades">
+      <thead><tr><th scope="col" class="row-n">#</th><th scope="col">Unidad</th><th scope="col">Placa</th><th scope="col">Vehículo</th><th scope="col">Año</th><th scope="col">Estado</th><th scope="col">Acuerdo / condición especial</th><th scope="col">Conductor asignado</th><th scope="col" class="num">Tarifa diaria</th><th scope="col" class="num">Semanal (6×)</th></tr></thead>
+      <tbody>@for (r of rows(); track r.unit.id; let i = $index) {
+        <tr><td class="row-n muted">{{ i + 1 }}</td><td><a [routerLink]="['/vehicles', r.unit.id]">{{ r.unit.code }}</a></td><td>{{ r.unit.plate ?? '' }}</td><td>{{ r.unit.make ?? '' }} {{ r.unit.model ?? '' }}</td><td>{{ r.unit.year ?? '' }}</td>
+          <td>{{ labels[r.unit.vehicleStatus] }}</td><td>@if (r.unit.agreement) { <span class="ag-text" [attr.title]="r.unit.agreement">{{ r.unit.agreement }}</span> }</td><td>@if (r.driver) { {{ r.driver.driverName }} (op. {{ r.driver.operatorCode }}) } @else { <span class="chip-s paid">Disponible</span> <span class="muted">Sin asignar</span> }</td>
+          <td class="num">{{ r.driver?.dailyRateCents != null ? usd(r.driver!.dailyRateCents!) : '' }}</td><td class="num">{{ r.driver?.dailyRateCents != null ? usd(r.driver!.dailyRateCents! * 6) : '' }}</td><td class="nowrap"><app-manage-entity kind="units" [entityId]="r.unit.id" [name]="r.unit.code" [archived]="r.unit.vehicleStatus === 'out_of_service'" (changed)="list.reload()" (deleted)="list.reload()" /></td></tr>
+      }</tbody></table></div>
+  }
+</div>
